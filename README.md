@@ -233,6 +233,25 @@ for _, w := range req.CheckReferences() {
 }
 ```
 
+**Requests that would exceed the context window**, caught before the round trip:
+
+```go
+est := req.EstimateTokens()
+if err := est.Err(); err != nil {
+    return err // never sent
+}
+```
+
+The API enforces **two** ceilings — 64k for the whole request and 32k for the state plus
+any *single* question — and a request can pass the first and fail the second. The
+server's error does not say which. The estimator is fitted from live measurement
+(`tokens ≈ 239 + 0.331 × wire_bytes`, plus ~240 fixed per call) and deliberately
+over-reports by ~25%, because an estimate that is sometimes *under* fails exactly when a
+request is near a limit.
+
+`typesafe.Budget` caps requests and tokens per window and refuses before any network
+I/O, so a runaway loop costs nothing.
+
 **Requests the server would reject**, caught before the round trip:
 
 ```go
@@ -349,8 +368,9 @@ Built and verified:
 - **Phase 4** — retries, backoff, retry budget, circuit breaker
 - **Phase 6** — **the `decision` package**: probability algebra, weighted policies,
   confidence bands, routing, and weight calibration from labeled data
+- **Phase 7** — context-budget and cost pre-flight, quota guard
 
-Next: context-budget pre-flight, a CLI, and static analyzers. Full plan in
+Next: a CLI and static analyzers. Full plan in
 [docs/Dev_Roadmap.md](docs/Dev_Roadmap.md).
 
 ---

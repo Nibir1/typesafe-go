@@ -31,6 +31,8 @@ type Client struct {
 	observer     func(AttemptInfo)
 	clk          clock
 	breaker      *CircuitBreaker
+	budget       *Budget
+	checkContext bool
 	baseURL      string
 	defaultModel string
 	httpClient   *http.Client
@@ -101,12 +103,20 @@ func NewClient(opts ...Option) (*Client, error) {
 		clk = realClock{}
 	}
 
+	// The context-limit check is on unless explicitly disabled.
+	checkContext := true
+	if cfg.checkContextLimit != nil {
+		checkContext = *cfg.checkContextLimit
+	}
+
 	return &Client{
 		apiKey:       cfg.apiKey,
 		retry:        cfg.retry,
 		observer:     cfg.observer,
 		clk:          clk,
 		breaker:      cfg.breaker,
+		budget:       cfg.budget,
+		checkContext: checkContext,
 		baseURL:      strings.TrimRight(cfg.baseURL, "/"),
 		defaultModel: cfg.defaultModel,
 		httpClient:   hc,
@@ -159,6 +169,20 @@ func (c *Client) SystemOne(ctx context.Context, req *SystemOneRequest) (*SystemO
 		State:     req.State,
 		Model:     firstNonEmpty(req.Model, c.defaultModel),
 		Questions: req.Questions,
+	}
+
+	// Pre-flight, in cost order: the cheapest refusals come first, and none of
+	// them touch the network.
+	est := req.EstimateTokens()
+	if c.checkContext {
+		if err := est.Err(); err != nil {
+			return nil, err
+		}
+	}
+	if c.budget != nil {
+		if err := c.budget.check(est.Total); err != nil {
+			return nil, err
+		}
 	}
 
 	body, err := json.Marshal(wire)

@@ -14,18 +14,20 @@ import (
 type Option func(*config) error
 
 type config struct {
-	apiKey       string
-	baseURL      string
-	defaultModel string
-	timeout      time.Duration
-	httpClient   *http.Client
-	headers      http.Header
-	logger       *slog.Logger
-	uaSuffix     string
-	retry        RetryPolicy
-	observer     func(AttemptInfo)
-	clk          clock
-	breaker      *CircuitBreaker
+	apiKey            string
+	baseURL           string
+	defaultModel      string
+	timeout           time.Duration
+	httpClient        *http.Client
+	headers           http.Header
+	logger            *slog.Logger
+	uaSuffix          string
+	retry             RetryPolicy
+	observer          func(AttemptInfo)
+	clk               clock
+	breaker           *CircuitBreaker
+	budget            *Budget
+	checkContextLimit *bool
 }
 
 // WithAPIKey sets the key explicitly, taking precedence over TYPESAFE_API_KEY.
