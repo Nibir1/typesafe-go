@@ -512,6 +512,13 @@ func TestBatchSeqBreakStopsEverything(t *testing.T) {
 }
 
 // Cancelling the context terminates the stream, and every input still reports.
+//
+// This is the contract SystemOneBatch already keeps, and the streaming view has
+// to keep it too: a consumer that is still ranging when the context is
+// cancelled must be able to tell "cancelled after three items" from "cancelled
+// before anything started". Dropping the remaining sends makes those two
+// indistinguishable, and in the worst case yields nothing at all with no error
+// anywhere to say why.
 func TestBatchSeqTerminatesOnCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	var served atomic.Int64
@@ -524,23 +531,69 @@ func TestBatchSeqTerminatesOnCancellation(t *testing.T) {
 		writeJSON(t, w, http.StatusOK, okResponse())
 	})
 
-	done := make(chan int, 1)
+	const n = 300
+	type outcome struct {
+		count int
+		seen  map[int]int
+	}
+	done := make(chan outcome, 1)
+
 	go func() {
-		n := 0
-		for range c.SystemOneBatchSeq(ctx, batchStates(300), batchQuestions(),
+		res := outcome{seen: map[int]int{}}
+		for i, item := range c.SystemOneBatchSeq(ctx, batchStates(n), batchQuestions(),
 			typesafe.WithConcurrency(4)) {
-			n++
+			res.count++
+			res.seen[i]++
+			_ = item
 		}
-		done <- n
+		done <- res
 	}()
 
 	select {
-	case n := <-done:
-		if n == 0 {
-			t.Error("stream yielded nothing at all")
+	case res := <-done:
+		if res.count != n {
+			t.Errorf("yielded %d items, want one per input (%d) even under cancellation",
+				res.count, n)
+		}
+		for i := 0; i < n; i++ {
+			if res.seen[i] != 1 {
+				t.Fatalf("item %d yielded %d times, want exactly 1", i, res.seen[i])
+			}
+		}
+		if int(served.Load()) >= n {
+			t.Error("cancellation did not stop new work from starting")
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("the stream did not terminate after cancellation")
+	}
+}
+
+// A consumer that stops listening is the one case where a result may be
+// dropped — nobody is waiting for it.
+func TestBatchSeqBreakIsNotCancellation(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(time.Millisecond)
+		writeJSON(t, w, http.StatusOK, okResponse())
+	})
+
+	got := 0
+	for range c.SystemOneBatchSeq(context.Background(), batchStates(300), batchQuestions(),
+		typesafe.WithConcurrency(4)) {
+		got++
+		if got == 5 {
+			break
+		}
+	}
+	if got != 5 {
+		t.Fatalf("consumed %d items, want 5", got)
+	}
+	// And nothing is left running.
+	deadline := time.Now().Add(2 * time.Second)
+	for batchWorkers() != 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("batch goroutines outlived the break")
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 

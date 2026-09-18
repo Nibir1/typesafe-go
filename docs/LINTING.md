@@ -220,9 +220,15 @@ exactly the false positives that get a linter disabled. Concatenations of litera
 folded, so instructions split across lines with `+` are still checked.
 
 **Only composite literals are matched.** A question written with the fluent
-constructors — `typesafe.NewChoice("…").Option(…)` — is **not** currently linted. This is
-a real hole now that the builders are a first-class way to write questions, and it is
-recorded in the roadmap as the next thing to close here.
+constructors — `typesafe.NewChoice("…").Option(…)` — or with the typed ones —
+`typesafe.TypedChoice[Topic](…)` — is **not** currently linted, and neither is anything
+`typesafe-gen` emits. This hole widened in Phase 12: constructors are now the natural
+way to write a question, so a growing share of them are invisible here.
+
+Closing it means teaching `lint/internal/qast` to recognize constructor calls as well as
+literals, which changes `Question.Lit` from an `*ast.CompositeLit` to a node and touches
+all three analyzers. It is recorded in the roadmap as the next thing to do in this
+module.
 
 **Questions are matched by type, not by name.** A local struct you happen to call `Noul`
 is not diagnosed; a question written as `ts.Noul{…}` under an import alias is. The type

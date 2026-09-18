@@ -78,8 +78,14 @@ func (r *SystemOneRequest) Validate() ([]Warning, error) {
 func validateQuestion(id string, q Question) ([]Warning, error) {
 	var warnings []Warning
 
-	// A fluently built question is the struct it stands for; validate that,
-	// not the wrapper.
+	// A wrapper — a fluent builder, or a typed question — is the struct it
+	// stands for. Check anything only the wrapper can know about first, then
+	// validate the question underneath it.
+	if v, ok := q.(selfValidator); ok {
+		if err := v.validateSelf(); err != nil {
+			return nil, fmt.Errorf("%w: question %q: %s", ErrInvalidRequest, id, err)
+		}
+	}
 	if b, ok := q.(questionBuilder); ok {
 		q = b.question()
 	}

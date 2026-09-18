@@ -357,6 +357,20 @@ func (c *Client) SystemOneBatchSeq(ctx context.Context, states []any, qs Questio
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
+		// stopped is closed when the *consumer* gives up, which is a different
+		// thing from the context being cancelled.
+		//
+		// A send abandoned because ctx is done loses a result that somebody is
+		// still waiting to read: a cancelled batch would then report fewer
+		// items than it has inputs, and in the worst case none at all, with no
+		// error anywhere to say so. Cancellation stops new work and fails the
+		// rest — every input is still accounted for, exactly as in
+		// SystemOneBatch. Only a consumer that has stopped listening lets a
+		// send be dropped.
+		stopped := make(chan struct{})
+		var stopOnce sync.Once
+		stop := func() { stopOnce.Do(func() { close(stopped) }) }
+
 		results := make(chan ItemResult, cfg.concurrency)
 		var wg sync.WaitGroup
 
@@ -369,7 +383,7 @@ func (c *Client) SystemOneBatchSeq(ctx context.Context, states []any, qs Questio
 					for j := i; j < len(states); j++ {
 						select {
 						case results <- ItemResult{Index: j, State: states[j], Err: context.Cause(ctx)}:
-						case <-ctx.Done():
+						case <-stopped:
 							wg.Wait()
 							close(results)
 							return
@@ -395,7 +409,7 @@ func (c *Client) SystemOneBatchSeq(ctx context.Context, states []any, qs Questio
 					}
 					select {
 					case results <- item:
-					case <-ctx.Done():
+					case <-stopped:
 					}
 				}(i, state)
 			}
@@ -405,8 +419,9 @@ func (c *Client) SystemOneBatchSeq(ctx context.Context, states []any, qs Questio
 
 		for item := range results {
 			if !yield(item.Index, item) {
-				// The caller broke. Cancel and drain so every worker's send
-				// completes and every goroutine exits before returning.
+				// The caller broke. Stop, cancel and drain so every worker's
+				// send completes and every goroutine exits before returning.
+				stop()
 				cancel()
 				for range results {
 				}

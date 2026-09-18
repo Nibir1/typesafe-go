@@ -380,6 +380,60 @@ generous rather than flaky.
 
 ---
 
+## Testing typed questions
+
+A typed question embeds the plain one, so anything that accepts a `Question` accepts it,
+and the JSON is byte-identical. Tests can therefore compare the two directly:
+
+```go
+plainJSON, _ := json.Marshal(typesafe.Choice{...})
+typedJSON, _ := json.Marshal(typesafe.TypedChoice[Topic](...))
+// equal, byte for byte
+```
+
+`Untyped()` converts an answer back, so existing assertions and the `decision` package
+keep working against a typed decode:
+
+```go
+typed, _ := typesafe.TypedChoiceAnswer[Topic](resp, "department")
+reflect.DeepEqual(typed.Untyped(), plain) // true
+```
+
+To assert that a mistake is caught at *compile* time, a normal test is the wrong tool —
+the file would have to compile to be part of the test binary. Write the program to a
+throwaway module and build it, as `tests/typecheck` does:
+
+```go
+cmd := exec.Command("go", "build", "./...")
+cmd.Dir = tempModuleWithReplaceDirective
+cmd.Env = append(os.Environ(), "GOPROXY=off")
+```
+
+Two things make that test mean something. Assert on the compiler's actual complaint, not
+just on failure — otherwise a malformed program passes for the wrong reason. And check
+that the failure is not "could not find module", which would make every case pass
+vacuously. Keep a control program that *must* compile beside the negative cases.
+
+---
+
+## Testing generated questions
+
+Check the generated file in, and assert it is current:
+
+```go
+// regenerate into a temp file, compare with the committed one
+if string(got) != string(want) {
+    t.Errorf("out of date; run: go generate ./...")
+}
+```
+
+Generate into a temp file rather than over the committed one — a failing test must not
+leave the tree already changed to match itself. `internal/genexample` does this, then
+round-trips the generated questions against a recorded cassette, so the assertion covers
+the whole path from enum to wire and back.
+
+---
+
 ## Checking questions with the analyzers
 
 Beyond runtime tests, the three `go/analysis` analyzers catch question-design mistakes

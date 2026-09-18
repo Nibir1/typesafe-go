@@ -17,6 +17,12 @@ dist/
 # that name at any depth, which silently excluded the whole cmd/typesafe
 # source tree. The built binary is ignored by the specific path below.
 cmd/typesafe/typesafe
+cmd/typesafe-gen/typesafe-gen
+# `go build ./cmd/...` from the repo root drops the binaries here, not in
+# their package directories. Anchored to the root so nothing under cmd/
+# is excluded.
+/typesafe
+/typesafe-gen
 
 # Test artifacts
 *.test

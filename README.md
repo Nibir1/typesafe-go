@@ -427,6 +427,97 @@ for i, item := range client.SystemOneBatchSeq(ctx, states, qs) {
 }
 ```
 
+Breaking out is the only thing that drops a pending result — nobody is waiting for it.
+A cancelled *context* still yields one item per input, each carrying the context error,
+so a consumer can tell "cancelled after three" from "cancelled before anything started".
+
+### Compile-time typed questions
+
+Declare the option set once, as a Go enum, and the compiler checks both ends:
+
+```go
+type Topic string
+
+const (
+    TopicBilling   Topic = "billing"
+    TopicTechnical Topic = "technical"
+    TopicOther     Topic = "other"
+)
+
+q := typesafe.TypedChoice[Topic]("Which team should handle this?",
+    typesafe.OptionOf(TopicBilling, "Invoices, charges, refunds"),
+    typesafe.OptionOf(TopicTechnical, "Bugs, outages, API errors"),
+    typesafe.OptionOf(TopicOther, nil), // null description, read by name alone
+)
+
+ans, err := q.Answer(resp, "department")
+switch ans.Choice {          // Topic, not string
+case TopicBilling:   ...
+case TopicTechnical: ...
+}
+ans.Probabilities[TopicBilling] // map[Topic]float64
+```
+
+`TypedScore` does the same for a rubric, where a level's position **is** its score:
+
+```go
+type Frustration int
+const (
+    Calm Frustration = iota
+    Annoyed
+    Angry
+)
+
+q := typesafe.TypedScore[Frustration]("How frustrated is the customer?",
+    typesafe.LevelOf(Calm, "No sign of irritation"),
+    typesafe.LevelOf(Annoyed, "Clearly unhappy, still civil"),
+    typesafe.LevelOf(Angry, "Hostile, threatening to leave"),
+)
+
+if ans.AtOrAbove(Angry) > 0.8 { escalate() }
+```
+
+A rubric declared out of order would map every answer to the wrong label with nothing
+in the score to reveal it, so `Validate` rejects one whose values do not match their
+positions.
+
+These are wrappers, not a parallel implementation: each embeds the plain question and
+marshals through the same code, so the JSON is byte-identical and `Untyped()` converts
+an answer back losslessly.
+
+`Exhaustive` catches the one thing types cannot — an answer naming an option the
+question never declared, which means the request and the enum have drifted apart:
+
+```go
+if err := typesafe.Exhaustive(ans, AllTopics...); err != nil { ... }
+```
+
+The question's own `Answer` method does this for you, against the set it declared.
+
+### Generating questions from enums
+
+```bash
+go install github.com/nibir1/typesafe-go/cmd/typesafe-gen@latest
+```
+
+```go
+//go:generate typesafe-gen -type TicketQuestions
+
+// TicketQuestions is everything asked about one support ticket.
+type TicketQuestions struct {
+    // Which team should handle this ticket?
+    Department Topic `typesafe:"choice"`
+
+    // How severe is the problem described here?
+    Severity Severity `typesafe:"score,id=severity"`
+}
+```
+
+Generates `Questions()`, a typed constructor and a checked accessor per field, and an
+`AllTopic` slice — descriptions taken from each constant's doc comment. The option set
+otherwise exists twice, as the enum the code switches on and as the criteria map the
+request carries, and nothing reports it when they drift.
+
 ### Fluent constructors
 
 ```go
@@ -541,12 +632,14 @@ ever changes.
 ├── cassette/          record and replay real API traffic
 ├── typesafetest/      mock, test server, assertions
 ├── cmd/typesafe/      the CLI — same module, so still zero dependencies
+├── cmd/typesafe-gen/  ★ go:generate questions from Go enums
 ├── lint/              ★ the analyzers — a SEPARATE module (needs x/tools)
 │   ├── atomicquestion/  jaggededge/  confidencecheck/
 │   └── cmd/typesafe-lint/
 ├── internal/          canonical JSON, state paths, token estimator, fixtures
 ├── tests/
 │   ├── contract/      offline: fixtures vs the locked wire contract
+│   ├── typecheck/     negative-compilation tests for the typed API
 │   └── integration/   live API, build-tagged
 ├── testdata/
 │   ├── contract/      golden request/response pairs
@@ -620,8 +713,10 @@ Built and verified:
 - **Phase 10** — interceptors, hooks, async fan-out, fluent constructors
 - **Phase 11** — **batching**: bounded worker pool, per-item error isolation, input
   ordering, globally adaptive concurrency, and an `iter.Seq2` streaming view
+- **Phase 12** — **compile-time typed questions**: `TypedChoice`/`TypedScore` over your
+  own enums, `Exhaustive` drift detection, and `typesafe-gen`
 
-Next: generics, observability, integrations. Full plan in
+Next: observability, integrations, release engineering. Full plan in
 [docs/Dev_Roadmap.md](docs/Dev_Roadmap.md).
 
 ---

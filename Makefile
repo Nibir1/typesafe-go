@@ -91,6 +91,17 @@ vet-integration: ## go vet with the integration build tag
 	@$(GO) vet -tags=integration ./...
 	$(call pass,vet clean under the integration tag)
 
+.PHONY: generate
+generate: ## Re-run go:generate (typesafe-gen)
+	$(call step,go generate)
+	@$(GO) generate ./... > /dev/null
+	$(call pass,generated files refreshed)
+
+# There is no generate-check target. TestGeneratedOutputIsCurrent already
+# regenerates into a temp file and compares, which catches drift without
+# depending on git state — a git-based check reports a generated file as
+# "out of date" merely because it has not been committed yet.
+
 .PHONY: analyzers
 analyzers: ## Build the TypeSafe analyzers and run them over this repository
 	$(call step,typesafe analyzers)
@@ -252,7 +263,11 @@ cassettes: ## Re-record every cassette from the live API (needs a key)
 # --- safety ------------------------------------------------------------------
 
 .PHONY: secrets
-secrets: ## Assert no credential reached a committed fixture
+secrets: ## Assert no credential reached any committed fixture or cassette
+# Every testdata tree, not just the two at the root: a cassette recorded
+# beside the package that uses it is exactly where a key would hide.
+# testdata/spec is excluded because it is the vendored OpenAPI document,
+# whose prose describes the Authorization header and is not ours to edit.
 	$(call step,secret scan)
 	@failed=0; scanned=0; \
 	while IFS= read -r -d '' f; do \
@@ -262,7 +277,8 @@ secrets: ## Assert no credential reached a committed fixture
 	    grep -niE 'bearer |authorization|sk-[a-zA-Z0-9_-]{16,}' "$$f" | head -3; \
 	    failed=1; \
 	  fi; \
-	done < <(find testdata/contract testdata/cassettes -type f \( -name '*.json' -o -name '*.jsonl' \) -print0 2>/dev/null); \
+	done < <(find . -path ./.git -prune -o -type f \( -name '*.json' -o -name '*.jsonl' \) \
+	    -path '*/testdata/*' -not -path '*/testdata/spec/*' -print0 2>/dev/null); \
 	if [ "$$failed" = 1 ]; then exit 1; fi; \
 	printf '$(OK)  ✓ scanned %s fixture(s), no credentials$(OFF)\n' "$$scanned"
 	@if git ls-files --error-unmatch $(ENVFILE) > /dev/null 2>&1; then \
