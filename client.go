@@ -119,11 +119,18 @@ func (c *Client) SystemOne(ctx context.Context, req *SystemOneRequest) (*SystemO
 	if req == nil {
 		return nil, fmt.Errorf("%w: nil request", ErrInvalidConfig)
 	}
-	if len(req.Questions) == 0 {
-		return nil, fmt.Errorf("%w: at least one question is required", ErrInvalidRequest)
+
+	// Anything the server is known to reject fails here, before a round trip.
+	// Warnings are advisory and are logged rather than returned, so that
+	// SystemOne's signature stays the simple one; call req.Validate directly
+	// to inspect them.
+	warnings, err := req.Validate()
+	if err != nil {
+		return nil, err
 	}
-	if req.State == nil {
-		return nil, fmt.Errorf("%w: state is required", ErrInvalidRequest)
+	for _, w := range warnings {
+		c.log(ctx, slog.LevelWarn, "typesafe question warning",
+			"question", w.QuestionID, "warning", w.Message)
 	}
 
 	// Copy so that defaulting the model does not mutate the caller's value.

@@ -29,25 +29,6 @@ type SystemOneRequest struct {
 	Questions map[string]Question `json:"questions"`
 }
 
-// Question is one of the three System One primitives. The interface is sealed:
-// only this package can implement it, so the set stays closed and a type
-// switch over answers can be exhaustive.
-//
-// Phase 1 ships only RawQuestion. Noul, Choice, and Score arrive in Phase 2.
-type Question interface {
-	isQuestion()
-}
-
-// RawQuestion is an escape hatch: an arbitrary JSON-encodable question body,
-// sent exactly as given.
-//
-// It exists so that a caller can reach a question shape this SDK does not yet
-// model — including anything TypeSafe adds after this release. It performs no
-// validation. Prefer the typed primitives once they exist.
-type RawQuestion map[string]any
-
-func (RawQuestion) isQuestion() {}
-
 // Usage reports token accounting for a request. Only input tokens are billed;
 // TypeSafe does not charge for output.
 type Usage struct {

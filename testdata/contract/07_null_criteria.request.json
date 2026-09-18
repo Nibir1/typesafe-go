@@ -19,8 +19,7 @@
       "type": "noul",
       "instructions": "The invoice names a company.",
       "criteria": {
-        "true": "A company is named",
-        "false": null
+        "true": "A company is named"
       }
     }
   }
