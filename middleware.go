@@ -227,6 +227,26 @@ func RequestIDFrom(ctx context.Context) string {
 	return id
 }
 
+// ContextWithRequestID puts an existing correlation id on ctx, so a call made
+// with that context reuses it instead of generating a new one.
+//
+//	ctx = typesafe.ContextWithRequestID(ctx, r.Header.Get("X-Request-Id"))
+//	resp, err := client.SystemOne(ctx, req)
+//
+// For propagating an id that already exists — the one a load balancer put on
+// an inbound request, or a job id from a queue. Correlating an LLM response
+// with the request that caused it is the first thing anyone wants during an
+// incident, and it is impossible if every call invents its own id.
+//
+// An empty id is ignored, so a missing inbound header falls through to
+// WithRequestID's generator rather than blanking the id out.
+func ContextWithRequestID(ctx context.Context, id string) context.Context {
+	if id == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, requestIDKey{}, id)
+}
+
 // WithRequestID generates a correlation id for every call.
 //
 // The id is placed on the context, where hooks and interceptors can read it

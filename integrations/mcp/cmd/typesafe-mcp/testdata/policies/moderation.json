@@ -1,0 +1,14 @@
+{
+  "policy": {
+    "name": "moderation",
+    "weights": { "is_spam": 1, "is_abusive": 2 },
+    "normalize": true,
+    "review_above": 0.5,
+    "block_above": 0.9
+  },
+  "questions": {
+    "is_spam": { "type": "noul", "instructions": "Is this message spam?" },
+    "is_abusive": { "type": "noul", "instructions": "Is this message abusive towards a person?" }
+  },
+  "description": "Moderate user-submitted text. A block verdict means the text should not be published."
+}

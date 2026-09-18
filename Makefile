@@ -50,7 +50,7 @@ help: ## Show this help
 # --- the gates ---------------------------------------------------------------
 
 .PHONY: verify
-verify: tidy-check fmt-check vet vet-integration deps deps-graph test-race contract fixtures secrets docs-check dashboards lint-module submodules analyzers ## Full offline gate (run before pushing)
+verify: tidy-check fmt-check integrations-fmt vet vet-integration deps deps-graph test-race contract fixtures secrets docs-check dashboards lint-module submodules integrations analyzers ## Full offline gate (run before pushing)
 	@printf '\n$(OK)$(BOLD)  All offline checks passed.$(OFF)\n'
 	@printf '$(DIM)  `make live` additionally exercises the real API.$(OFF)\n\n'
 
@@ -118,14 +118,37 @@ lint-module: ## Test the analyzer module
 	@cd lint && $(GO) vet ./... && $(GO) test -count=1 ./...
 	$(call pass,analyzers pass their own tests)
 
+# Every optional module, each with its own go.mod. `go test ./...` at the root
+# does not reach any of them, which is the whole point of the split.
+SUBMODULES := typesafecache typesafeotel typesafeprom
+INTEGRATIONS := $(addprefix integrations/,nethttp gin echo fiber langchaingo temporal mcp)
+
 .PHONY: submodules
 submodules: ## Test the optional submodules (cache, otel, prom)
 	$(call step,optional submodules)
-	@for m in typesafecache typesafeotel typesafeprom; do \
+	@for m in $(SUBMODULES); do \
 	  printf '$(DIM)    %s$(OFF)\n' "$$m"; \
 	  (cd $$m && $(GO) vet ./... && $(GO) test -count=1 ./...) || exit 1; \
 	done
 	$(call pass,submodules pass their own tests)
+
+.PHONY: integrations
+integrations: ## Test the integration modules
+	$(call step,integration modules)
+	@for m in $(INTEGRATIONS); do \
+	  printf '$(DIM)    %s$(OFF)\n' "$$m"; \
+	  (cd $$m && $(GO) vet ./... && $(GO) test -count=1 ./...) || exit 1; \
+	done
+	$(call pass,integrations pass their own tests)
+
+.PHONY: integrations-fmt
+integrations-fmt: ## Fail if any module outside the root is unformatted
+	$(call step,gofmt across every module)
+	@out=$$(gofmt -l $(SUBMODULES) $(INTEGRATIONS) deploy 2>/dev/null); \
+	if [ -n "$$out" ]; then \
+	  printf '$(ERR)  ✗ unformatted files:$(OFF)\n%s\n' "$$out"; exit 1; \
+	fi
+	$(call pass,every module formatted)
 
 .PHONY: deps-graph
 deps-graph: ## Assert the core module's dependency graph is empty

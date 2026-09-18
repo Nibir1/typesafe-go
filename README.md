@@ -580,6 +580,56 @@ with a committed dashboard. Full guide in [docs/OBSERVABILITY.md](docs/OBSERVABI
 
 ---
 
+## Integrations
+
+Seven modules, each with its own `go.mod`, so importing the SDK drags none of them in:
+
+```go
+// net/http, gin, echo, fiber — client injection plus request-id correlation
+r.Use(tsgin.Middleware(client), tsgin.Correlation())
+
+// langchaingo — a classification tool whose answer cannot be a value nobody declared
+agent := agents.NewOneShotAgent(llm, []tools.Tool{classifier})
+
+// temporal — the API call in an Activity, which is the only replay-safe place for it
+tstemporal.Register(w, tstemporal.NewActivities(client))
+
+// mcp — serve TypeSafe to an agent over the Model Context Protocol
+srv.Run(ctx, &mcp.StdioTransport{})
+```
+
+The HTTP middlewares are thin by design. The half worth having is **correlation**:
+the inbound `X-Request-Id` becomes the SDK's request id, so one id ties the HTTP
+request, this SDK's logs and TypeSafe's own records together. Without it, correlating
+an answer with the request that caused it means joining on timestamps.
+
+### `evaluate_policy`, which no other MCP server offers
+
+```bash
+go install github.com/nibir1/typesafe-go/integrations/mcp/cmd/typesafe-mcp@latest
+typesafe-mcp -policies ./policies -only-policies
+```
+
+A thin MCP proxy lets an agent ask anything. This inverts it: the agent names a
+policy and supplies text, while the questions, weights and thresholds stay on the
+server. The agent never sees them, cannot drift from them, and cannot be talked out
+of them by the text it is judging. What comes back is a verdict and the arithmetic:
+
+```json
+{
+  "verdict": "review",
+  "score": 0.6833,
+  "contributions": [
+    {"question": "is_abusive", "weight": 2, "value": 0.62, "contribution": 1.24},
+    {"question": "is_spam",    "weight": 1, "value": 0.81, "contribution": 0.81}
+  ]
+}
+```
+
+Full guide in [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
+
+---
+
 ## Static analysis
 
 Three `go/analysis` analyzers, in a separate module so the core keeps its zero
@@ -685,6 +735,8 @@ ever changes.
 ├── typesafecache/     ★ response cache — SEPARATE module, still zero deps
 ├── typesafeotel/      OpenTelemetry tracing — SEPARATE module
 ├── typesafeprom/      Prometheus metrics — SEPARATE module
+├── integrations/      ★ nethttp, gin, echo, fiber, langchaingo, temporal, mcp
+│                      — SEPARATE modules, one per framework
 ├── deploy/            docker-compose stack, Grafana dashboard, worked example
 ├── lint/              ★ the analyzers — a SEPARATE module (needs x/tools)
 │   ├── atomicquestion/  jaggededge/  confidencecheck/
@@ -743,6 +795,7 @@ printf 'TYPESAFE_API_KEY=%s\n' "$YOUR_KEY" > .env.local && chmod 600 .env.local
 | [docs/TESTING.md](docs/TESTING.md) | Testing without a key |
 | [docs/LINTING.md](docs/LINTING.md) | The three analyzers, their rules, and CI wiring |
 | [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) | Tracing, metrics, caching, and the demo stack |
+| [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) | HTTP frameworks, LangChainGo, Temporal, MCP |
 | [docs/Dev_Roadmap.md](docs/Dev_Roadmap.md) | Phase plan, competitive audit, design corrections |
 | [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) | Attribution register |
 
@@ -775,8 +828,10 @@ Built and verified:
   own enums, `Exhaustive` drift detection, and `typesafe-gen`
 - **Phase 13** — **observability and caching**: `typesafeotel`, `typesafeprom`, and a
   response cache keyed on the resolved model id
+- **Phase 14** — **integrations**: four HTTP middlewares, LangChainGo, Temporal, and an
+  MCP server with `evaluate_policy`
 
-Next: integrations, docs, release engineering. Full plan in
+Next: docs and developer experience, then release engineering. Full plan in
 [docs/Dev_Roadmap.md](docs/Dev_Roadmap.md).
 
 ---

@@ -139,6 +139,39 @@ jobs:
             exit 1
           fi
 
+  # The integration modules. Each has its own go.mod so that importing the SDK
+  # never drags in a web framework, LangChainGo, Temporal or the MCP SDK.
+  integrations:
+    name: Integration ${{ matrix.module }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [nethttp, gin, echo, fiber, langchaingo, temporal, mcp]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: integrations/${{ matrix.module }}/go.mod
+
+      - name: Vet
+        working-directory: integrations/${{ matrix.module }}
+        run: go vet ./...
+
+      - name: Test
+        working-directory: integrations/${{ matrix.module }}
+        run: go test -race -count=1 ./...
+
+      - name: Assert the module is tidy
+        working-directory: integrations/${{ matrix.module }}
+        run: |
+          cp go.mod /tmp/go.mod.orig
+          go mod tidy
+          if ! diff -u /tmp/go.mod.orig go.mod; then
+            echo "::error::integrations/${{ matrix.module }}/go.mod is not tidy"
+            exit 1
+          fi
+
   # The deploy example is the only place all three optional modules are shown
   # composed. It is not tested, but it must compile, or the one worked example
   # of the full wiring rots.

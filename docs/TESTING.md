@@ -474,6 +474,53 @@ what happens in production.
 
 ---
 
+## Testing an integration
+
+Every integration module ships an `example_test.go`. They compile and are type-checked
+but carry no `// Output:` comment, so they are **not executed** — running one would need
+a live key and, for Temporal, a cluster. A compiled example still catches the thing that
+rots fastest: a signature change that makes the documented usage wrong.
+
+For the HTTP middlewares, assert the correlation id reached the **API**, not just the
+context. The context assertion passes on a middleware that quietly drops the id:
+
+```go
+api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+    sent = r.Header.Get("x-correlation-id")   // this is the assertion that matters
+    ...
+}))
+```
+
+For Temporal, `TestActivityEnvironment` tests the Activity against a stub API and
+`TestWorkflowEnvironment` runs the workflow end to end. To test determinism, mock the
+activity by name — which is what a replay does with a recorded result — and run the
+workflow repeatedly:
+
+```go
+env.OnActivity(tstemporal.SystemOneActivityName, mock.Anything, mock.Anything).
+    Return(fixedResponse, nil)
+```
+
+The activity must still be **registered** even when mocked: `OnActivity` resolves the
+name against the registry.
+
+For MCP, drive the server through the SDK's own in-memory transport rather than
+hand-rolling JSON-RPC. The handshake, the schema inference and the output validation are
+then the shipping code paths:
+
+```go
+serverT, clientT := mcp.NewInMemoryTransports()
+go srv.Run(ctx, serverT)
+session, err := mcp.NewClient(...).Connect(ctx, clientT, nil)
+```
+
+Worth knowing: the MCP SDK validates a tool's output against the schema it inferred from
+the output type — **including a failed call's**. A handler returning a bare zero value
+whose map is nil produces JSON `null`, fails validation, and turns a clean tool error
+into a protocol error. Return a schema-valid empty value on every error path.
+
+---
+
 ## Checking questions with the analyzers
 
 Beyond runtime tests, the three `go/analysis` analyzers catch question-design mistakes
