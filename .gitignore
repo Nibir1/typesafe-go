@@ -40,7 +40,7 @@ testdata/cassettes/*.secret.json
 # ---- Editors / OS ----
 .idea/
 .vscode/
-Dev_Roadmap.md
+docs/Dev_Roadmap.md
 *.swp
 *~
 .DS_Store

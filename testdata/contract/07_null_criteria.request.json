@@ -1,0 +1,27 @@
+{
+  "state": {
+    "source_text": "Invoice issued to Beaver Dam Logistics."
+  },
+  "model": "jev-latest",
+  "questions": {
+    "customer_name": {
+      "type": "choice",
+      "instructions": "Which option is the customer name in `source_text`?",
+      "criteria": {
+        "Beaver Logistics": null,
+        "Dam Logistics": null,
+        "Beaver Dam Logistics": null,
+        "Beaver": null,
+        "Dam": null
+      }
+    },
+    "bare_noul": {
+      "type": "noul",
+      "instructions": "The invoice names a company.",
+      "criteria": {
+        "true": "A company is named",
+        "false": null
+      }
+    }
+  }
+}

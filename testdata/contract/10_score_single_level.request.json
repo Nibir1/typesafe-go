@@ -1,0 +1,13 @@
+{
+  "state": "hello",
+  "model": "jev-latest",
+  "questions": {
+    "q": {
+      "type": "score",
+      "instructions": "Rate it.",
+      "criteria": [
+        "only level"
+      ]
+    }
+  }
+}

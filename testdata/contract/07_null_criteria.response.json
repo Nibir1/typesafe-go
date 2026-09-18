@@ -1,0 +1,25 @@
+{
+  "model": "jev-1.13.0",
+  "answers": {
+    "customer_name": {
+      "type": "choice",
+      "choice": "Beaver Dam Logistics",
+      "probabilities": {
+        "Beaver Logistics": 0.02,
+        "Dam Logistics": 0.02,
+        "Beaver Dam Logistics": 0.93,
+        "Beaver": 0.02,
+        "Dam": 0.01
+      },
+      "confidence": 0.91
+    },
+    "bare_noul": {
+      "type": "noul",
+      "noul": 0.99
+    }
+  },
+  "usage": {
+    "input_tokens": 132,
+    "output_tokens": 40
+  }
+}

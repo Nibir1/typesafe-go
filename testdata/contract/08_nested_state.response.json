@@ -1,0 +1,17 @@
+{
+  "model": "jev-1.13.0",
+  "answers": {
+    "refund_requested": {
+      "type": "noul",
+      "noul": 0.98
+    },
+    "policy_supports_refund": {
+      "type": "noul",
+      "noul": 0.95
+    }
+  },
+  "usage": {
+    "input_tokens": 268,
+    "output_tokens": 32
+  }
+}

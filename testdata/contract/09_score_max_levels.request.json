@@ -1,0 +1,24 @@
+{
+  "state": {
+    "incident": "Primary database unreachable for 40 minutes; all writes failing."
+  },
+  "model": "jev-latest",
+  "questions": {
+    "severity": {
+      "type": "score",
+      "instructions": "Rate incident severity.",
+      "criteria": [
+        "Level 0: no impact",
+        "Level 1: trivial",
+        "Level 2: minor",
+        "Level 3: noticeable",
+        "Level 4: moderate",
+        "Level 5: elevated",
+        "Level 6: serious",
+        "Level 7: severe",
+        "Level 8: critical",
+        "Level 9: catastrophic"
+      ]
+    }
+  }
+}

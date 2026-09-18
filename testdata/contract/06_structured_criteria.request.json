@@ -1,0 +1,46 @@
+{
+  "state": {
+    "ticket": "Card declined twice at checkout, order never placed."
+  },
+  "model": "jev-latest",
+  "questions": {
+    "category": {
+      "type": "choice",
+      "instructions": "Classify the failure.",
+      "criteria": {
+        "payment_declined": {
+          "signal": "issuer rejected the charge",
+          "examples": [
+            "declined",
+            "insufficient funds"
+          ]
+        },
+        "checkout_bug": {
+          "signal": "the store failed before charging",
+          "examples": [
+            "500 error",
+            "blank page"
+          ]
+        }
+      }
+    },
+    "severity": {
+      "type": "score",
+      "instructions": "Rate customer impact.",
+      "criteria": [
+        {
+          "level": "none",
+          "detail": "Customer completed the purchase"
+        },
+        {
+          "level": "partial",
+          "detail": "Customer retried and succeeded"
+        },
+        {
+          "level": "blocked",
+          "detail": "Customer could not purchase at all"
+        }
+      ]
+    }
+  }
+}

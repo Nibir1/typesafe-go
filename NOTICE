@@ -1,0 +1,24 @@
+typesafe-go
+Copyright 2026 Nahasat Nibir and the typesafe-go contributors
+
+This product includes software developed as a community-maintained Go SDK for the
+TypeSafe System One API.
+
+This product is not affiliated with, endorsed by, or sponsored by TypeSafe AI.
+"TypeSafe", "System One", and "Jev" are names used by TypeSafe AI to identify their
+API and models, and are used here only to describe what this software interoperates
+with (nominative use).
+
+------------------------------------------------------------------------------
+Third-party code
+------------------------------------------------------------------------------
+
+Portions of this software may be derived from third-party open-source projects.
+Every such portion is recorded in THIRD_PARTY_NOTICES.md, together with its
+upstream source, copyright holder, and license text.
+
+THIRD_PARTY_NOTICES.md is the authoritative register. If a file in this repository
+contains code derived from another project, that file carries a header comment
+naming the source, and the corresponding entry exists in THIRD_PARTY_NOTICES.md.
+
+A pull request that adds derived code without both of those is not mergeable.

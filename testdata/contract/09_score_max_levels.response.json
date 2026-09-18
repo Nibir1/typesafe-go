@@ -1,0 +1,38 @@
+{
+  "model": "jev-1.13.0",
+  "answers": {
+    "severity": {
+      "type": "score",
+      "score": 7.28,
+      "legend": {
+        "0": "Level 0: no impact",
+        "1": "Level 1: trivial",
+        "2": "Level 2: minor",
+        "3": "Level 3: noticeable",
+        "4": "Level 4: moderate",
+        "5": "Level 5: elevated",
+        "6": "Level 6: serious",
+        "7": "Level 7: severe",
+        "8": "Level 8: critical",
+        "9": "Level 9: catastrophic"
+      },
+      "probabilities": {
+        "0": 0.01,
+        "1": 0.01,
+        "2": 0.02,
+        "3": 0.03,
+        "4": 0.04,
+        "5": 0.06,
+        "6": 0.09,
+        "7": 0.13,
+        "8": 0.26,
+        "9": 0.35
+      },
+      "confidence": 0.62
+    }
+  },
+  "usage": {
+    "input_tokens": 196,
+    "output_tokens": 72
+  }
+}
