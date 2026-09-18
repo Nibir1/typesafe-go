@@ -33,6 +33,9 @@ type Client struct {
 	breaker      *CircuitBreaker
 	budget       *Budget
 	checkContext bool
+	handler      Handler
+	requestID    func() string
+	requestIDHdr string
 	baseURL      string
 	defaultModel string
 	httpClient   *http.Client
@@ -109,7 +112,7 @@ func NewClient(opts ...Option) (*Client, error) {
 		checkContext = *cfg.checkContextLimit
 	}
 
-	return &Client{
+	c := &Client{
 		apiKey:       cfg.apiKey,
 		retry:        cfg.retry,
 		observer:     cfg.observer,
@@ -123,7 +126,14 @@ func NewClient(opts ...Option) (*Client, error) {
 		headers:      cfg.headers.Clone(),
 		logger:       cfg.logger,
 		userAgent:    ua,
-	}, nil
+		requestID:    cfg.requestID,
+		requestIDHdr: cfg.requestIDHeader,
+	}
+
+	// Compose once, at construction. Panic recovery sits outermost so it
+	// catches a panic in any interceptor, including the first one listed.
+	c.handler = recoverPanic(chain(c.systemOne, cfg.interceptors))
+	return c, nil
 }
 
 // DefaultModel reports the model used when a request leaves Model empty.
@@ -143,6 +153,18 @@ func (c *Client) BaseURL() string { return c.baseURL }
 // UnprocessableEntityError, RateLimitError, OverloadedError, and so on. Use
 // errors.As to reach the detail, or errors.Is against the sentinels.
 func (c *Client) SystemOne(ctx context.Context, req *SystemOneRequest) (*SystemOneResponse, error) {
+	// A correlation id is attached before the chain runs, so interceptors and
+	// hooks all see the same one.
+	if c.requestID != nil {
+		if RequestIDFrom(ctx) == "" {
+			ctx = context.WithValue(ctx, requestIDKey{}, c.requestID())
+		}
+	}
+	return c.handler(ctx, req)
+}
+
+// systemOne is the innermost handler: everything an interceptor wraps.
+func (c *Client) systemOne(ctx context.Context, req *SystemOneRequest) (*SystemOneResponse, error) {
 	if req == nil {
 		return nil, fmt.Errorf("%w: nil request", ErrInvalidConfig)
 	}
@@ -396,6 +418,11 @@ func (c *Client) attempt(ctx context.Context, method, path string, body []byte) 
 			httpReq.Header.Add(k, v)
 		}
 	}
+	if c.requestIDHdr != "" {
+		if id := RequestIDFrom(ctx); id != "" {
+			httpReq.Header.Set(c.requestIDHdr, id)
+		}
+	}
 	httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
 	httpReq.Header.Set("Accept", "application/json")
 	httpReq.Header.Set("User-Agent", c.userAgent)
@@ -474,3 +501,7 @@ func firstNonEmpty(vals ...string) string {
 	}
 	return ""
 }
+
+// errorsAs is errors.As, named locally so middleware.go can use it without
+// importing errors for a single call.
+func errorsAs(err error, target any) bool { return errors.As(err, target) }

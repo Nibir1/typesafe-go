@@ -266,6 +266,52 @@ documentation mentions the limit. We found it by sending eleven.
 
 ---
 
+## Composing it into an application
+
+Interceptors wrap one *logical* call — retries happen beneath, so a latency histogram
+records what the caller waited for rather than one bar per attempt:
+
+```go
+client, _ := typesafe.NewClient(
+    typesafe.WithInterceptor(tracing, metrics, typesafe.WithLogging(slog.Default())),
+    typesafe.WithRequestID(uuid.NewString),
+    typesafe.WithHooks(typesafe.Hooks{
+        OnResponse: func(ctx context.Context, i typesafe.CallInfo) {
+            log.Printf("%s: %d tokens in %s", i.RequestID, i.InputTokens, i.Duration)
+        },
+    }),
+)
+```
+
+They compose outermost-first. A panic in an interceptor or hook becomes a
+`*PanicError` with the stack intact, rather than taking down the request path.
+
+`WithLogging` logs the request id, question count, duration, model and usage — and
+never the state, which is your data and routinely holds personal information.
+
+### Fan-out
+
+```go
+results := client.SystemOneAll(ctx, reqA, reqB, reqC) // positional, one error each
+r := <-client.SystemOneAsync(ctx, req)
+```
+
+Every question about *one* state belongs in a single request — they run in parallel
+server-side. This is for fanning out over different states.
+
+### Fluent constructors
+
+```go
+typesafe.NewChoice("Which team should handle this?").
+    Option("billing", "Payments, invoicing, refunds").
+    Option("technical", "Bugs, outages, integrations")
+```
+
+Structs remain the documented default; both forms marshal byte-identically and get the
+same validation.
+
+---
+
 ## Static analysis
 
 Three `go/analysis` analyzers, in a separate module so the core keeps its zero
@@ -433,8 +479,9 @@ Built and verified:
 - **Phase 8** — the `typesafe` CLI
 - **Phase 9** — **three static analyzers**: `atomicquestion`, `jaggededge`,
   `confidencecheck`
+- **Phase 10** — interceptors, hooks, async fan-out, fluent constructors
 
-Next: ergonomics, batching, generics, integrations. Full plan in
+Next: batching, generics, integrations. Full plan in
 [docs/Dev_Roadmap.md](docs/Dev_Roadmap.md).
 
 ---

@@ -28,6 +28,9 @@ type config struct {
 	breaker           *CircuitBreaker
 	budget            *Budget
 	checkContextLimit *bool
+	interceptors      []Interceptor
+	requestID         func() string
+	requestIDHeader   string
 }
 
 // WithAPIKey sets the key explicitly, taking precedence over TYPESAFE_API_KEY.
