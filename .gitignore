@@ -13,7 +13,9 @@ scratch/
 bin/
 CLAUDE.local.md
 dist/
-typesafe
+# NOTE: a bare `typesafe` pattern would match any file OR DIRECTORY of
+# that name at any depth, which silently excluded the whole cmd/typesafe
+# source tree. The built binary is ignored by the specific path below.
 cmd/typesafe/typesafe
 
 # Test artifacts

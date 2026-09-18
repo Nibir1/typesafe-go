@@ -290,6 +290,35 @@ The logger never receives your API key or your request state.
 
 ---
 
+## Command line
+
+```bash
+go install github.com/nibir1/typesafe-go/cmd/typesafe@latest
+```
+
+```bash
+# Ask three questions about a ticket, no file needed
+typesafe run --state-text "Payouts have failed for 3 days" \
+  --noul urgent="Does this convey urgency?" \
+  --choice team="billing,technical,sales" \
+  --score severity="Low,Medium,High"
+
+typesafe estimate -f request.json   # tokens and cost, sends nothing
+typesafe lint -f request.json       # problems, before you pay for them
+typesafe doctor                     # why is my setup not working?
+typesafe explain --policy p.json --answer is_spam=0.93
+```
+
+Also `models`, `record`, `replay`, `completion`, and `version`. Everything except
+`run`/`models`/`doctor`/`record` works offline with no key.
+
+`doctor` returns a distinct exit code per cause — 3 credential, 4 network, 7 unknown
+model, 6 rate limited — so a script can branch without parsing stderr.
+
+The binary has **no dependencies either**: stdlib `flag`, no CLI framework.
+
+---
+
 ## Requirements
 
 **Go 1.23+.** The core module has **zero third-party dependencies**, and CI fails if that
@@ -369,8 +398,9 @@ Built and verified:
 - **Phase 6** — **the `decision` package**: probability algebra, weighted policies,
   confidence bands, routing, and weight calibration from labeled data
 - **Phase 7** — context-budget and cost pre-flight, quota guard
+- **Phase 8** — the `typesafe` CLI
 
-Next: a CLI and static analyzers. Full plan in
+Next: static analyzers. Full plan in
 [docs/Dev_Roadmap.md](docs/Dev_Roadmap.md).
 
 ---
