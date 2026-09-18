@@ -3,10 +3,28 @@
 `typesafe-go` is licensed under Apache-2.0. This file is the authoritative register of
 third-party code incorporated into it, and of the licenses that code carries.
 
-**Current status: no third-party code has been incorporated.** Phases 0–3 are written
-and the core module still has zero dependencies — `make verify` fails if that changes.
-The candidate projects in §3 are recorded so the attribution process exists before any
-reused code lands, not after.
+**Current status: no third-party code has been incorporated.** The candidate projects
+in §3 are recorded so the attribution process exists before any reused code lands, not
+after.
+
+### Dependencies, by module
+
+| Module | Third-party dependencies |
+|---|---|
+| `github.com/nibir1/typesafe-go` (core, including the CLI) | **none** |
+| `github.com/nibir1/typesafe-go/lint` (the analyzers) | `golang.org/x/tools` and its tree |
+
+The core module's guarantee is checked by `make deps`, which fails the build if its
+dependency graph is ever non-empty. That includes `cmd/typesafe`: the CLI uses stdlib
+`flag` rather than a framework, so the binary has no dependencies either.
+
+The analyzers are a separate module precisely so they can depend on
+`golang.org/x/tools` — `go/analysis` lives there, and there is no way to write a Go
+analyzer without it. Splitting is what keeps the core's guarantee true: importing
+`github.com/nibir1/typesafe-go` pulls in nothing.
+
+These are **dependencies**, not incorporated code. Nothing in §3 has been copied,
+adapted, or translated into this repository.
 
 ---
 

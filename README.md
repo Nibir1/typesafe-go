@@ -218,6 +218,90 @@ Full guide: **[docs/TESTING.md](docs/TESTING.md)**.
 
 ---
 
+## Deciding, not just asking
+
+TypeSafe's documentation is consistent: decompose a broad judgment into atomic
+questions, ask them together, and combine the answers with deterministic logic in code.
+Every SDK hands back a probability distribution and stops there. The `decision` package
+is the part that was left as an exercise.
+
+```go
+var SpamPolicy = decision.Policy{
+    Name: "spam-v3",
+    Weights: decision.Weights{
+        "asks_for_credentials":  0.4,
+        "creates_time_pressure": 0.3,
+        "has_suspicious_link":   0.2,
+        "generic_greeting":      0.1,
+    },
+    Normalize:   true,
+    ReviewAbove: 0.5,
+    BlockAbove:  0.8,
+}
+
+result, err := SpamPolicy.Evaluate(resp)
+switch result.Verdict {
+case decision.Block:  quarantine()
+case decision.Review: queueForHuman()
+}
+```
+
+A `Policy` is **data**, so it round-trips through JSON: thresholds can live in config,
+be diffed in review, and reload without a deploy. `Validate()` catches a `ReviewAbove`
+above `BlockAbove`, which makes a verdict unreachable with nothing at runtime to say so.
+
+`result.Trace` shows which question contributed what, ordered by contribution. A
+probability in an audit log without its derivation is not evidence of anything.
+
+### Probability, done as probability
+
+```go
+decision.Or(0.9, 0.8)             // 0.98 — a + b - ab, not a + b
+decision.AtLeast(2, 0.5, 0.5, 0.5) // 0.5  — exact Poisson-binomial
+decision.MinAll(0.9, 0.9, 0.9)     // 0.9  — no independence assumed
+```
+
+`AtLeast` answers a question a weighted sum structurally cannot: *how likely is it that
+**several** of these warning signs are real?* A sum of 1.5 cannot distinguish three
+half-certain signals from one certain and one absent.
+
+`MinAll`/`MaxAny` exist because independence is sometimes false — ask "is this urgent?"
+and "is this time-sensitive?" about the same state and multiplying understates badly.
+
+### Confidence as a second axis
+
+```go
+routing := decision.Bands{ActAbove: 0.9, ConfirmAbove: 0.5}
+switch routing.Classify(department.Confidence) {
+case decision.Act:      route(department.Choice)
+case decision.Confirm:  askUser(department.Choice)
+case decision.Escalate: routeToHuman()
+}
+```
+
+`ClassifyAnswer` on a **Noul** returns an error rather than a band — a Noul has no
+confidence, and banding one would read a zero and escalate every call.
+
+### Weights from data, not guesswork
+
+```go
+report, err := decision.Calibrate(labeledHistory, questionIDs, decision.CalibrationOptions{})
+if !report.Separable {
+    return fmt.Errorf("these signals do not predict the label:\n%s", report)
+}
+policy := decision.NewPolicy("spam-v4", report.Weights)
+```
+
+Logistic regression, stdlib only. **Check `Separable`** — a fit on noise still returns
+weights, and those weights still produce confident-looking verdicts. The bar is the
+majority-class rate plus two standard errors, so it scales with how much data you have.
+
+Nothing in `decision` touches the network. Given the same answers it returns the same
+verdict, which is what makes a decision replayable months later — enforced by an
+architecture test.
+
+---
+
 ## Catching mistakes before they cost you
 
 Two checks with no equivalent in any other TypeSafe client.
@@ -298,6 +382,50 @@ r := <-client.SystemOneAsync(ctx, req)
 
 Every question about *one* state belongs in a single request — they run in parallel
 server-side. This is for fanning out over different states.
+
+### Batching thousands of states
+
+```go
+result := client.SystemOneBatch(ctx, states, typesafe.Questions{
+    "is_urgent": typesafe.Noul{Instructions: "Does this convey urgency?"},
+    "team":      typesafe.NewChoice("Which team?").Options("billing", "technical"),
+}, typesafe.WithConcurrency(16))
+
+if err := result.Err(); err != nil {
+    log.Print(err) // "3 of 1000 batch items failed \n 2 x ... \n 1 x ..."
+}
+for i, item := range result.Items { // input order, always
+    if item.Err != nil {
+        continue // one failure never aborts the batch
+    }
+    use(i, item.Response)
+}
+```
+
+A bounded worker pool with **per-item error isolation**, results **in input order**,
+and a summed `Usage`. `SystemOneAll` is the unbounded form for a handful of requests;
+this is the one for thousands.
+
+Concurrency adapts **globally**: when any worker meets a `429` or `529` the limit for
+the whole batch halves, and it climbs back one at a time after a run of successes —
+never above the `WithConcurrency` ceiling you set. Without a shared limit, every worker
+independently rediscovers the same rate limit while the batch keeps pushing at the rate
+that caused it. `WithAdaptiveConcurrency(false)` pins it.
+
+It batches **states, never questions**. Jev ingests the state once and evaluates every
+question against it in parallel, so a second question costs only its own tokens while a
+second state costs a whole request.
+
+For a batch too large to hold in memory, or when downstream work can start on the first
+result, range over the stream instead — results arrive in *completion* order, and
+`ItemResult.Index` gives the input position:
+
+```go
+for i, item := range client.SystemOneBatchSeq(ctx, states, qs) {
+    ...
+    if enough { break } // cancels the batch; no goroutine outlives the loop
+}
+```
 
 ### Fluent constructors
 
@@ -407,22 +535,31 @@ ever changes.
 ## Repository layout
 
 ```
-.                      the typesafe package — the public API
+.                      the typesafe package — client, primitives, answers,
+                       retries, budget, middleware, batching
+├── decision/          ★ composition: algebra, policies, bands, calibration
 ├── cassette/          record and replay real API traffic
 ├── typesafetest/      mock, test server, assertions
-├── internal/          canonical JSON, state paths, fixture loading
+├── cmd/typesafe/      the CLI — same module, so still zero dependencies
+├── lint/              ★ the analyzers — a SEPARATE module (needs x/tools)
+│   ├── atomicquestion/  jaggededge/  confidencecheck/
+│   └── cmd/typesafe-lint/
+├── internal/          canonical JSON, state paths, token estimator, fixtures
 ├── tests/
 │   ├── contract/      offline: fixtures vs the locked wire contract
 │   └── integration/   live API, build-tagged
 ├── testdata/
 │   ├── contract/      golden request/response pairs
 │   └── spec/          vendored OpenAPI document
-├── docs/
-└── scripts/
+├── docs/  scripts/  Makefile
 ```
 
-The library lives at the module root so that the import path stays
+**The library lives at the module root** so the import path stays
 `github.com/nibir1/typesafe-go` rather than stuttering into `.../typesafe-go/typesafe`.
+
+**`lint/` is a separate module** because `go/analysis` comes from `golang.org/x/tools`.
+That split is what keeps the core's zero-dependency guarantee true — importing the SDK
+pulls in nothing.
 
 ---
 
@@ -454,6 +591,7 @@ printf 'TYPESAFE_API_KEY=%s\n' "$YOUR_KEY" > .env.local && chmod 600 .env.local
 |---|---|
 | [docs/WIRE_CONTRACT.md](docs/WIRE_CONTRACT.md) | The verified wire contract, and every place the published docs are wrong |
 | [docs/TESTING.md](docs/TESTING.md) | Testing without a key |
+| [docs/LINTING.md](docs/LINTING.md) | The three analyzers, their rules, and CI wiring |
 | [docs/Dev_Roadmap.md](docs/Dev_Roadmap.md) | Phase plan, competitive audit, design corrections |
 | [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) | Attribution register |
 
@@ -480,8 +618,10 @@ Built and verified:
 - **Phase 9** — **three static analyzers**: `atomicquestion`, `jaggededge`,
   `confidencecheck`
 - **Phase 10** — interceptors, hooks, async fan-out, fluent constructors
+- **Phase 11** — **batching**: bounded worker pool, per-item error isolation, input
+  ordering, globally adaptive concurrency, and an `iter.Seq2` streaming view
 
-Next: batching, generics, integrations. Full plan in
+Next: generics, observability, integrations. Full plan in
 [docs/Dev_Roadmap.md](docs/Dev_Roadmap.md).
 
 ---

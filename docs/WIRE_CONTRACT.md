@@ -10,7 +10,7 @@ recorded below with the evidence.
 | | |
 |---|---|
 | **Locked** | 2026-09-18 |
-| **Verified against the live API** | 2026-09-18 — all 10 fixtures replayed successfully; error envelopes captured |
+| **Verified against the live API** | 2026-09-18 — all 10 fixtures replayed successfully; error envelopes captured; token accounting measured (§10) |
 | **Machine-readable source** | [`testdata/spec/openapi.json`](../testdata/spec/openapi.json) — OpenAPI 3.1.0, `TypeSafe` v0.2.0, served live at `https://api.typesafe.ai/openapi.json` |
 | **Prose source** | `https://docs.typesafe.ai/api`, `/primitives`, `/primitives/advanced`, `/concepts/state`, `/models` |
 | **Executable form** | [`testdata/contract/`](../testdata/contract/) — 10 golden request/response pairs, all schema-validated and all replayed live |
@@ -376,7 +376,73 @@ probabilities are invented.
 Do not cite a fixture's numbers as evidence of model behavior. Its *shape* is verified;
 its *values* are illustrative.
 
-## 10. Keeping this current
+## 10. Token accounting, measured
+
+TypeSafe publishes no tokenizer and no formula. This was fitted by sending every golden
+fixture to the live API and comparing the serialized request size to the returned
+`usage.input_tokens`.
+
+```
+tokens ≈ 239 + 0.331 × wire_bytes      (least squares, residuals within ±23)
+```
+
+`wire_bytes` is the **compact** JSON the client sends. An earlier fit used the size of
+the pretty-printed fixture files, which are about 35% larger, and produced a slope 53%
+too shallow. Measure what goes on the wire.
+
+### The intercept is real, and large
+
+| fixture | wire bytes | actual tokens |
+|---|---:|---:|
+| `10_score_single_level` | 125 | 283 |
+| `03_score_single` | 219 | 312 |
+| `01_noul_single` | 243 | 307 |
+| `05_structured_instructions` | 422 | 386 |
+| `08_nested_state` | 687 | 469 |
+
+A 125-byte request costs 283 tokens. **Roughly 240 tokens are charged per call
+regardless of content.** For anyone sending many small requests this dominates entirely,
+and an estimator that scaled purely with content would be wrong by an order of magnitude
+on exactly that workload.
+
+### What the SDK ships, and why it differs
+
+`EstimateTokens` uses `240 + 0.413 × wire_bytes` — the measured intercept, and a slope
+**25% above** the measured one.
+
+Fitting the tightest line that dominates every observation gives a lower slope and a
+higher intercept, and scores better on this sample. It is a trap: a slope below the
+measured marginal rate only dominates because the larger intercept covers the gap on
+small inputs. Extrapolated to a 240KB request it under-reports by thousands of tokens,
+precisely where a context-limit check has to be right.
+
+So the slope is pinned above the measured rate and the intercept chosen to dominate at
+that slope. The result over-reports by 3–18% on the measured corpus and about 25% at
+scale — which is the only direction a conservative estimator may be wrong in.
+
+> All measurements came from requests under 700 wire bytes. The relationship may change
+> at 50KB, and nothing in the SDK can know that. `TokenEstimate.Approximate` is always
+> true. Do not use the estimate for billing.
+
+### The two ceilings are independent
+
+| Limit | Value | Applies to |
+|---|---|---|
+| Whole request | 64,000 | state + **every** question |
+| Single question | 32,000 | state + the **one longest** question |
+
+A request can pass the first and fail the second, and the server's error does not say
+which. The SDK checks both and names the offending question:
+
+```
+estimated 33337 tokens for state plus question "big", above the 32000
+single-question limit — note this is a separate ceiling from the 64000
+whole-request one, which this request is within
+```
+
+---
+
+## 11. Keeping this current
 
 ```bash
 make spec        # has the served OpenAPI document drifted from the vendored copy?

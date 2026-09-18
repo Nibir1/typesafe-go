@@ -226,6 +226,46 @@ starts recording headers.
 
 ---
 
+## Testing a decision policy
+
+A `decision.Policy` is pure arithmetic over numbers, so it needs no client, no mock and
+no network. `decision.Nouls` is a bare map that satisfies the same `Source` interface a
+real response does:
+
+```go
+func TestSpamPolicy(t *testing.T) {
+    cases := []struct {
+        name    string
+        answers decision.Nouls
+        want    decision.Verdict
+    }{
+        {"clean", decision.Nouls{"asks_for_credentials": 0.01, "generic_greeting": 0.05}, decision.Allow},
+        {"obvious", decision.Nouls{"asks_for_credentials": 0.98, "generic_greeting": 0.9}, decision.Block},
+    }
+    for _, tc := range cases {
+        got, err := SpamPolicy.Evaluate(tc.answers)
+        if err != nil { t.Fatal(err) }
+        if got.Verdict != tc.want {
+            t.Errorf("%s: %s (score %.4f)\n%s", tc.name, got.Verdict, got.Score, got.Trace)
+        }
+    }
+}
+```
+
+Two things worth building into such a test:
+
+**Validate the policy at startup, and in a test.** `policy.Validate()` catches a
+`ReviewAbove` above `BlockAbove`, which makes a verdict unreachable with nothing at
+runtime to tell you.
+
+**Print the trace on failure.** `Result.Trace` shows which question contributed what,
+ordered by contribution. A verdict without its derivation tells you nothing about why
+the threshold was wrong.
+
+Traces are deterministic across runs, so they can be diffed and snapshotted.
+
+---
+
 ## Testing retry behavior
 
 Waiting out real backoff makes a suite slow without proving the delays were right. Two
@@ -243,6 +283,134 @@ while the production timer code runs unmodified.
 > goroutine blocked on a socket read is not *durably* blocked, so the clock never
 > advances and the test hangs until the binary times out. Use an in-memory
 > `http.RoundTripper` inside a bubble, not `httptest.NewServer`.
+
+## Testing interceptors and async calls
+
+An interceptor wraps one logical call, so a test asserting order does not need a server
+that fails:
+
+```go
+c, _ := typesafe.NewClient(
+    typesafe.WithAPIKey("test"),
+    typesafe.WithBaseURL(srv.URL),
+    typesafe.WithInterceptor(recordOrder("a"), recordOrder("b")),
+)
+// a runs outermost: a:in, b:in, b:out, a:out
+```
+
+Retries happen *beneath* the innermost handler. If you are asserting per-attempt
+behavior, use `WithRetryObserver`, not an interceptor.
+
+A panic in an interceptor or hook becomes a `*typesafe.PanicError` rather than crashing
+the test binary, and the captured stack names the panicking frame:
+
+```go
+var pe *typesafe.PanicError
+if errors.As(err, &pe) {
+    t.Logf("panicked with %v at:\n%s", pe.Value, pe.Stack)
+}
+```
+
+`SystemOneAsync` returns a buffered channel that always closes after its one result, so
+a test can safely abandon a call:
+
+```go
+r := <-client.SystemOneAsync(ctx, req)   // one result, then closed
+```
+
+A cancelled call still delivers its error on the channel — it does not close early — so
+a `select` waiting on it is always woken exactly once.
+
+---
+
+## Testing a batch
+
+`SystemOneBatch` fails each item independently, so a test asserts on the slice rather
+than on one error. Results are always in input order, including the ones that failed
+and the ones a cancellation stopped from ever starting:
+
+```go
+result := client.SystemOneBatch(ctx, states, qs, typesafe.WithConcurrency(8))
+
+for i, item := range result.Items {   // len == len(states), always
+    switch {
+    case item.Err != nil:
+        t.Logf("state %d failed: %v", i, item.Err)
+    default:
+        assertAnswer(t, item.Response)
+    }
+}
+```
+
+`result.Err()` is a **grouped summary**, not the first failure, so asserting on it means
+matching the sentinel and reading the count — not comparing against one item's error:
+
+```go
+if !errors.Is(result.Err(), typesafe.ErrBatchPartialFailure) { ... }
+for _, err := range result.Errors() { ... }   // the detail, in input order
+```
+
+To test concurrency itself, count in the handler rather than trusting the option.
+`WithAdaptiveConcurrency(false)` pins the limit so the peak is a constant:
+
+```go
+mu.Lock(); inFlight++; if inFlight > peak { peak = inFlight }; mu.Unlock()
+```
+
+### The goroutine leak check
+
+Counting *all* goroutines around a batch does not work. The HTTP transport keeps a read
+and a write loop per pooled connection, and `httptest` keeps handler goroutines alive
+past the response; both outlive the batch by design and vary with connection reuse. A
+`runtime.NumGoroutine()` delta measures them, not the thing under test — this SDK's own
+first attempt at the check failed for exactly that reason, against an implementation
+that leaked nothing.
+
+Count by name instead:
+
+```go
+buf := make([]byte, 1<<20)
+n := runtime.Stack(buf, true)
+live := strings.Count(string(buf[:n]), "SystemOneBatchSeq")
+```
+
+Poll it briefly: the iterator returns once `wg.Wait` has, but a finished goroutine still
+needs to be scheduled off. A real leak never clears, so a two-second ceiling is
+generous rather than flaky.
+
+---
+
+## Checking questions with the analyzers
+
+Beyond runtime tests, the three `go/analysis` analyzers catch question-design mistakes
+at build time: compound questions, documented Jev failure modes, and decisions made
+without consulting confidence.
+
+```bash
+go install github.com/nibir1/typesafe-go/lint/cmd/typesafe-lint@latest
+go vet -vettool=$(which typesafe-lint) ./...
+```
+
+They skip `_test.go` by default, since tests construct deliberate edge cases. See
+[LINTING.md](LINTING.md).
+
+---
+
+## Checking a request from the command line
+
+For a one-off check without writing a test:
+
+```bash
+typesafe lint -f request.json            # validation, references, size
+typesafe lint -f request.json --strict   # warnings become a non-zero exit
+typesafe estimate -f request.json        # tokens and cost, sends nothing
+typesafe replay -f request.json --cassette testdata/cassettes/triage.jsonl
+```
+
+`typesafe replay` exits 8 on a cassette miss, which makes it usable as a CI check that a
+recorded fixture still matches the request it was recorded for.
+
+---
 
 ## Assertions
 
@@ -264,6 +432,27 @@ others in the same response.
 `AssertConfidenceAtLeast` on a **Noul** always fails, with a message explaining why: a
 Noul carries no confidence, because its probability already expresses the uncertainty.
 Asserting on it means the test is reading the wrong field.
+
+---
+
+## Keeping a test suite from spending money
+
+A test that accidentally reaches the live API is a test that fails in CI for unrelated
+reasons — and bills you. Two guards:
+
+```go
+// Refuse before any network I/O, whatever the test does.
+budget := typesafe.NewBudget(typesafe.MaxTotalRequests(0))
+client, _ := typesafe.NewClient(typesafe.WithBudget(budget))
+```
+
+```go
+// Or assert the suite needs no credentials at all.
+// env -u TYPESAFE_API_KEY go test ./...
+```
+
+This repository's own `make verify` runs the second form, so "the suite is offline" is
+checked rather than assumed.
 
 ---
 
