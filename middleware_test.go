@@ -77,7 +77,7 @@ func TestInterceptorSeesOneLogicalCallAcrossRetries(t *testing.T) {
 	},
 		typesafe.WithInterceptor(count),
 		typesafe.WithRetryPolicy(fastRetry()),
-		typesafe.WithRetryObserver(func(typesafe.AttemptInfo) { attempts++ }),
+		typesafe.WithRetryObserver(func(context.Context, typesafe.AttemptInfo) { attempts++ }),
 	)
 
 	if _, err := c.SystemOne(context.Background(), sampleRequest()); err != nil {

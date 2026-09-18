@@ -28,7 +28,7 @@ const maxErrorBody = 1 << 20 // 1 MiB
 type Client struct {
 	apiKey       string
 	retry        RetryPolicy
-	observer     func(AttemptInfo)
+	observer     func(context.Context, AttemptInfo)
 	clk          clock
 	breaker      *CircuitBreaker
 	budget       *Budget
@@ -368,7 +368,7 @@ func (c *Client) do(ctx context.Context, method, path string, body []byte) ([]by
 			"endpoint", ep, "attempt", info.Attempt, "status", status,
 			"delay_ms", delay.Milliseconds(), "retry_after_honored", honored)
 		if c.observer != nil {
-			c.observer(info)
+			c.observer(ctx, info)
 		}
 
 		if err := c.clk.Sleep(ctx, delay); err != nil {

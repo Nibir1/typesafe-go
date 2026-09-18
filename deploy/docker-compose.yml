@@ -1,0 +1,61 @@
+# A working traces-and-metrics stack for the typesafe-go SDK.
+#
+#   cd deploy
+#   export TYPESAFE_API_KEY=...
+#   docker compose up
+#
+# Then:
+#   Grafana     http://localhost:3000   (anonymous, already provisioned)
+#   Jaeger      http://localhost:16686
+#   Prometheus  http://localhost:9090
+#
+# The example service makes a call every few seconds so the panels have
+# something in them; without traffic a dashboard of empty panels tells you
+# nothing about whether the wiring works.
+
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:1.71.0
+    ports:
+      - "16686:16686"   # UI
+      - "4318:4318"     # OTLP/HTTP, which is what the example exports to
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+
+  prometheus:
+    image: prom/prometheus:v3.7.3
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+
+  grafana:
+    image: grafana/grafana:12.3.1
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    environment:
+      # Anonymous admin: this is a local demo stack, not something to expose.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana:/var/lib/grafana/dashboards:ro
+
+  example:
+    build:
+      context: ..
+      dockerfile: deploy/example/Dockerfile
+    depends_on:
+      - jaeger
+    environment:
+      # Passed through from your shell. The key is never baked into the image.
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:?set TYPESAFE_API_KEY before starting the stack}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      METRICS_ADDR: ":2112"
+    ports:
+      - "2112:2112"

@@ -529,7 +529,7 @@ func TestObserverSeesEveryRetry(t *testing.T) {
 		mu   sync.Mutex
 		seen []AttemptInfo
 	)
-	c := retryClient(t, srv.URL, clk, WithRetryObserver(func(a AttemptInfo) {
+	c := retryClient(t, srv.URL, clk, WithRetryObserver(func(_ context.Context, a AttemptInfo) {
 		mu.Lock()
 		defer mu.Unlock()
 		seen = append(seen, a)
@@ -611,7 +611,7 @@ func TestConcurrentRetriesAreRaceFree(t *testing.T) {
 
 	var observed int64
 	var mu sync.Mutex
-	c := retryClient(t, srv.URL, clk, WithRetryObserver(func(AttemptInfo) {
+	c := retryClient(t, srv.URL, clk, WithRetryObserver(func(context.Context, AttemptInfo) {
 		mu.Lock()
 		observed++
 		mu.Unlock()

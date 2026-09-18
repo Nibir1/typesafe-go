@@ -1,6 +1,7 @@
 package typesafe
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -23,7 +24,7 @@ type config struct {
 	logger            *slog.Logger
 	uaSuffix          string
 	retry             RetryPolicy
-	observer          func(AttemptInfo)
+	observer          func(context.Context, AttemptInfo)
 	clk               clock
 	breaker           *CircuitBreaker
 	budget            *Budget
@@ -198,10 +199,14 @@ func WithMaxRetries(n int) Option {
 // Useful for metrics and for surfacing retry behavior in traces. It is called
 // synchronously on the calling goroutine, so keep it quick and do not block.
 //
-//	typesafe.WithRetryObserver(func(a typesafe.AttemptInfo) {
+//	typesafe.WithRetryObserver(func(ctx context.Context, a typesafe.AttemptInfo) {
 //	    metrics.Retries.WithLabelValues(strconv.Itoa(a.Status)).Inc()
 //	})
-func WithRetryObserver(fn func(AttemptInfo)) Option {
+//
+// The context is the one the call was made with. Tracing integrations need it:
+// without it an attempt cannot be attached to the span of the call it belongs
+// to, and a per-attempt span would be an orphan.
+func WithRetryObserver(fn func(context.Context, AttemptInfo)) Option {
 	return func(c *config) error {
 		if fn == nil {
 			return fmt.Errorf("%w: WithRetryObserver given nil", ErrInvalidConfig)

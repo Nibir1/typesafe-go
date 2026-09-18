@@ -531,6 +531,55 @@ same validation.
 
 ---
 
+## Tracing, metrics and caching
+
+Three optional modules, each its own Go module so the core stays dependency-free:
+
+```go
+tracer  := typesafeotel.New()
+metrics := typesafeprom.New()
+cache, _ := typesafecache.New(typesafecache.WithTTL(10 * time.Minute))
+
+client, err := typesafe.NewClient(
+    typesafe.WithInterceptor(
+        tracer.Interceptor(),   // outermost
+        metrics.Interceptor(),
+        cache.Interceptor(),    // innermost, so a hit is still traced and timed
+    ),
+    typesafe.WithRetryObserver(func(ctx context.Context, a typesafe.AttemptInfo) {
+        tracer.RetryObserver()(ctx, a)
+        metrics.RetryObserver()(ctx, a)
+    }),
+)
+```
+
+**`typesafeotel`** turns a retried call from one unexplained span into a tree:
+
+```
+typesafe.systemone                    412ms
+├── typesafe.attempt 1                 38ms  error, 429
+├── typesafe.attempt 2                 41ms  error, 429
+└── typesafe.attempt 3                310ms  ok
+```
+
+**`typesafeprom`** exposes latency, errors by class, retries, tokens, batch outcomes —
+and **answer confidence**, which has no equivalent in an ordinary API client. A drift in
+the confidence distribution is the earliest visible sign that your inputs changed shape;
+it moves long before latency or errors do.
+
+**`typesafecache`** keys on the **resolved** model id, never the alias you asked for.
+`jev-latest` moves without notice, and a cache keyed on the alias would keep serving
+answers from the previous model version with nothing in the response to reveal it. When
+an alias starts resolving elsewhere, every entry under the old id becomes unreachable at
+once — and `Event.AliasMoved` tells you it happened.
+
+Failures are never cached: a cached error is a cached outage.
+
+`deploy/docker-compose.yml` runs the whole thing against Jaeger, Prometheus and Grafana
+with a committed dashboard. Full guide in [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md).
+
+---
+
 ## Static analysis
 
 Three `go/analysis` analyzers, in a separate module so the core keeps its zero
@@ -633,6 +682,10 @@ ever changes.
 ├── typesafetest/      mock, test server, assertions
 ├── cmd/typesafe/      the CLI — same module, so still zero dependencies
 ├── cmd/typesafe-gen/  ★ go:generate questions from Go enums
+├── typesafecache/     ★ response cache — SEPARATE module, still zero deps
+├── typesafeotel/      OpenTelemetry tracing — SEPARATE module
+├── typesafeprom/      Prometheus metrics — SEPARATE module
+├── deploy/            docker-compose stack, Grafana dashboard, worked example
 ├── lint/              ★ the analyzers — a SEPARATE module (needs x/tools)
 │   ├── atomicquestion/  jaggededge/  confidencecheck/
 │   └── cmd/typesafe-lint/
@@ -650,9 +703,13 @@ ever changes.
 **The library lives at the module root** so the import path stays
 `github.com/nibir1/typesafe-go` rather than stuttering into `.../typesafe-go/typesafe`.
 
-**`lint/` is a separate module** because `go/analysis` comes from `golang.org/x/tools`.
-That split is what keeps the core's zero-dependency guarantee true — importing the SDK
-pulls in nothing.
+**`lint/`, `typesafeotel` and `typesafeprom` are separate modules** because they need
+`golang.org/x/tools`, `go.opentelemetry.io/otel` and `client_golang` respectively. That
+split is what keeps the core's zero-dependency guarantee true — importing the SDK pulls
+in nothing, and `make deps-graph` asserts it.
+
+**`typesafecache` is separate too**, though it has no dependencies of its own: a caller
+who does not want a cache should not carry one.
 
 ---
 
@@ -685,6 +742,7 @@ printf 'TYPESAFE_API_KEY=%s\n' "$YOUR_KEY" > .env.local && chmod 600 .env.local
 | [docs/WIRE_CONTRACT.md](docs/WIRE_CONTRACT.md) | The verified wire contract, and every place the published docs are wrong |
 | [docs/TESTING.md](docs/TESTING.md) | Testing without a key |
 | [docs/LINTING.md](docs/LINTING.md) | The three analyzers, their rules, and CI wiring |
+| [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) | Tracing, metrics, caching, and the demo stack |
 | [docs/Dev_Roadmap.md](docs/Dev_Roadmap.md) | Phase plan, competitive audit, design corrections |
 | [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) | Attribution register |
 
@@ -715,8 +773,10 @@ Built and verified:
   ordering, globally adaptive concurrency, and an `iter.Seq2` streaming view
 - **Phase 12** — **compile-time typed questions**: `TypedChoice`/`TypedScore` over your
   own enums, `Exhaustive` drift detection, and `typesafe-gen`
+- **Phase 13** — **observability and caching**: `typesafeotel`, `typesafeprom`, and a
+  response cache keyed on the resolved model id
 
-Next: observability, integrations, release engineering. Full plan in
+Next: integrations, docs, release engineering. Full plan in
 [docs/Dev_Roadmap.md](docs/Dev_Roadmap.md).
 
 ---

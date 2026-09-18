@@ -102,6 +102,71 @@ jobs:
             exit 1
           fi
 
+  # The optional modules. They are separate modules precisely so the core's
+  # dependency graph stays empty, so they need their own jobs — `go test ./...`
+  # at the root does not reach them.
+  submodules:
+    name: Submodule ${{ matrix.module }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [typesafecache, typesafeotel, typesafeprom]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          # Each submodule declares its own floor, which is higher than the
+          # core's wherever a dependency forces it. Reading the version from
+          # the module keeps this job honest when one of them moves.
+          go-version-file: ${{ matrix.module }}/go.mod
+
+      - name: Vet
+        working-directory: ${{ matrix.module }}
+        run: go vet ./...
+
+      - name: Test
+        working-directory: ${{ matrix.module }}
+        run: go test -race -count=1 ./...
+
+      - name: Assert the module is tidy
+        working-directory: ${{ matrix.module }}
+        run: |
+          cp go.mod /tmp/go.mod.orig
+          go mod tidy
+          if ! diff -u /tmp/go.mod.orig go.mod; then
+            echo "::error::${{ matrix.module }}/go.mod is not tidy"
+            exit 1
+          fi
+
+  # The deploy example is the only place all three optional modules are shown
+  # composed. It is not tested, but it must compile, or the one worked example
+  # of the full wiring rots.
+  deploy-example:
+    name: Deploy example builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: deploy/example/go.mod
+      - name: Build
+        working-directory: deploy/example
+        run: go build ./... && go vet ./...
+
+  dashboards:
+    name: Grafana dashboards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      # Validates the JSON, and that every PromQL expression names a metric
+      # typesafeprom actually exports — which is what breaks silently when a
+      # metric is renamed.
+      - run: python3 scripts/check_dashboards.py
+
   format:
     name: gofmt
     runs-on: ubuntu-latest

@@ -50,7 +50,7 @@ help: ## Show this help
 # --- the gates ---------------------------------------------------------------
 
 .PHONY: verify
-verify: tidy-check fmt-check vet vet-integration deps test-race contract fixtures secrets docs-check lint-module analyzers ## Full offline gate (run before pushing)
+verify: tidy-check fmt-check vet vet-integration deps deps-graph test-race contract fixtures secrets docs-check dashboards lint-module submodules analyzers ## Full offline gate (run before pushing)
 	@printf '\n$(OK)$(BOLD)  All offline checks passed.$(OFF)\n'
 	@printf '$(DIM)  `make live` additionally exercises the real API.$(OFF)\n\n'
 
@@ -117,6 +117,32 @@ lint-module: ## Test the analyzer module
 	$(call step,lint module)
 	@cd lint && $(GO) vet ./... && $(GO) test -count=1 ./...
 	$(call pass,analyzers pass their own tests)
+
+.PHONY: submodules
+submodules: ## Test the optional submodules (cache, otel, prom)
+	$(call step,optional submodules)
+	@for m in typesafecache typesafeotel typesafeprom; do \
+	  printf '$(DIM)    %s$(OFF)\n' "$$m"; \
+	  (cd $$m && $(GO) vet ./... && $(GO) test -count=1 ./...) || exit 1; \
+	done
+	$(call pass,submodules pass their own tests)
+
+.PHONY: deps-graph
+deps-graph: ## Assert the core module's dependency graph is empty
+	$(call step,core dependency graph)
+# `go mod graph` emits synthetic go@ and toolchain@ nodes for the language and
+# toolchain version. They are not dependencies, and a check that counts them
+# fails on a module with nothing in it at all.
+	@out=$$($(GO) mod graph | grep -vE ' (go|toolchain)@' || true); \
+	if [ -n "$$out" ]; then \
+	  printf '$(ERR)  ✗ the core module has dependencies:$(OFF)\n%s\n' "$$out"; exit 1; \
+	fi
+	$(call pass,go mod graph has no third-party edges)
+
+.PHONY: dashboards
+dashboards: ## Validate the committed Grafana dashboards
+	$(call step,dashboards)
+	@python3 scripts/check_dashboards.py
 
 .PHONY: lint
 lint: ## golangci-lint, if installed

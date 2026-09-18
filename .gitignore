@@ -67,3 +67,6 @@ Thumbs.db
 # Python virtualenv used by `make fixtures`
 .venv/
 __pycache__/
+
+# Deploy example binary
+/deploy/example/example

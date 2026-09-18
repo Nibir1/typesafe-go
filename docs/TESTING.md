@@ -434,6 +434,46 @@ the whole path from enum to wire and back.
 
 ---
 
+## Testing with the observability modules
+
+`typesafeotel` is testable without a collector — the OTel SDK ships an in-memory
+recorder:
+
+```go
+sr := tracetest.NewSpanRecorder()
+tp := trace.NewTracerProvider(trace.WithSpanProcessor(sr))
+tracer := typesafeotel.New(typesafeotel.WithTracerProvider(tp))
+// ... make calls ...
+for _, s := range sr.Ended() { ... }
+```
+
+Assert parentage on **span ids**, not on names: a test that only checks names passes
+happily when every attempt span is an orphan in its own trace.
+
+```go
+if s.Parent().SpanID() != call.SpanContext().SpanID() { ... }
+```
+
+`typesafeprom` exposes a `prometheus.Collector`, so a test registers it in a fresh
+registry and reads the families back:
+
+```go
+reg := prometheus.NewRegistry()
+reg.Register(metrics)
+got, _ := reg.Gather()
+```
+
+Use a **new registry per test**. The default one is global, and tests that share it
+observe each other's counters.
+
+`typesafecache` takes an injectable clock through its test hooks, so expiry and alias
+moves are testable without sleeping. Where a test needs the production behaviour, age
+the cache rather than purging it: purging drops cached responses but deliberately keeps
+what the cache learned about model aliases, and a test that purges is not exercising
+what happens in production.
+
+---
+
 ## Checking questions with the analyzers
 
 Beyond runtime tests, the three `go/analysis` analyzers catch question-design mistakes
