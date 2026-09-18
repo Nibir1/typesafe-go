@@ -204,6 +204,11 @@ off a Noul reads a zero that means nothing. Guarded by `TestNoulAnswerHasNoConfi
 `GET /v1/models` → `{ "models": [ { "name", "description", "release_date" } ] }`,
 all three fields required.
 
+> **`release_date` is not a date.** The schema documents it as "formatted as
+> YYYY-MM-DD"; the live API returns an RFC3339 timestamp with microseconds, e.g.
+> `2026-09-10T18:38:01.391457+00:00`. The SDK models it as an opaque `string`, because
+> parsing it as a date per the documentation fails on every real response.
+
 Returns aliases. Versioned ids such as `jev-1.13.0` are accepted by the `model` field
 whether or not they are listed.
 

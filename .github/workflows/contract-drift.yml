@@ -139,6 +139,35 @@ jobs:
       - run: go vet ./...
       - run: go test -race -count=1 ./...
 
+  no-secrets-in-fixtures:
+    name: No credential in any committed fixture
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Scan cassettes and fixtures
+        run: |
+          # Cassettes scrub at write time, so this should never fire. It exists
+          # because a leaked key in a committed fixture is the one mistake here
+          # that a later commit cannot undo.
+          #
+          # Scoped to files this repository generates. testdata/spec is fetched
+          # verbatim from upstream and legitimately describes a bearer scheme;
+          # it is checked by the schema-drift job instead.
+          failed=0
+          scanned=0
+          while IFS= read -r -d '' f; do
+            scanned=$((scanned + 1))
+            if grep -qiE 'bearer |authorization|sk-[a-zA-Z0-9_-]{16,}' "$f"; then
+              echo "::error file=$f::possible credential in a committed fixture"
+              grep -niE 'bearer |authorization|sk-[a-zA-Z0-9_-]{16,}' "$f" | head -5
+              failed=1
+            fi
+          done < <(find testdata/contract testdata/cassettes -type f \
+                     \( -name '*.json' -o -name '*.jsonl' \) -print0 2>/dev/null)
+          if [ "$failed" = 1 ]; then exit 1; fi
+          echo "Scanned $scanned committed fixture(s); no credentials found."
+
   behavioral-drift:
     name: Live API vs golden fixtures
     runs-on: ubuntu-latest
