@@ -1,0 +1,194 @@
+name: ci
+
+# Runs the offline gate on every supported Go version and platform.
+#
+# Nothing here needs an API key or network access to TypeSafe. The live-API
+# checks live in contract-drift.yml, gated on a secret.
+#
+# The version matrix exists because go.mod declares a 1.23 floor while
+# development happens on the newest toolchain. An unverified floor rots
+# silently: a stdlib symbol or language feature from a later release compiles
+# fine locally and breaks for everyone on the version we promised to support.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The floor and every release up to current stable. Failing here means the
+  # go directive in go.mod is a promise we are not keeping.
+  test:
+    name: go${{ matrix.go }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        go: ["1.23", "1.24", "1.25", "1.26", "1.27"]
+        include:
+          # Current stable on the other platforms developers actually use.
+          # A full 5x3 matrix would spend most of its time re-proving that Go
+          # is portable; these catch the path and filesystem assumptions that
+          # are the realistic cross-platform risk.
+          - os: macos-latest
+            go: "1.27"
+          - os: windows-latest
+            go: "1.27"
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ matrix.go }}
+          check-latest: true
+
+      - name: Report the resolved toolchain
+        run: go version
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Vet (integration tag)
+        run: go vet -tags=integration ./...
+
+      - name: Test
+        run: go test -count=1 -timeout 300s ./...
+
+      # The race detector is slower and needs cgo; one platform is enough to
+      # catch a data race, and ubuntu is where it is cheapest.
+      - name: Test with the race detector
+        if: matrix.os == 'ubuntu-latest'
+        run: go test -race -count=1 -timeout 600s ./...
+
+  # Guards principle P1. A dependency can arrive through a transitive import
+  # that nobody notices in review.
+  no-dependencies:
+    name: Zero third-party dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+
+      - name: Assert an empty dependency graph
+        run: |
+          deps=$(go list -m all | tail -n +2)
+          if [ -n "$deps" ]; then
+            echo "::error::The core module gained dependencies:"
+            echo "$deps"
+            exit 1
+          fi
+          echo "Dependency graph is empty, as required by P1."
+
+      - name: Assert go.mod is tidy
+        run: |
+          cp go.mod /tmp/go.mod.orig
+          go mod tidy
+          if ! diff -u /tmp/go.mod.orig go.mod; then
+            echo "::error::go.mod is not tidy — run: make tidy"
+            exit 1
+          fi
+
+  format:
+    name: gofmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+
+      - name: Check formatting
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then
+            echo "::error::Unformatted files — run: make fmt"
+            echo "$out"
+            exit 1
+          fi
+          echo "All files formatted."
+
+  docs:
+    name: Doc coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: python3 scripts/check_docs.py
+
+  # Catches assumptions about the width of int. Token arithmetic and score
+  # level indices are the realistic places for one to hide, and 32-bit targets
+  # are exactly where a Go library stops being portable without anyone
+  # noticing.
+  cross-compile:
+    name: Cross-compile ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux/386
+            goos: linux
+            goarch: "386"
+          - target: linux/arm64
+            goos: linux
+            goarch: arm64
+          - target: darwin/amd64
+            goos: darwin
+            goarch: amd64
+          - target: windows/amd64
+            goos: windows
+            goarch: amd64
+          - target: js/wasm
+            goos: js
+            goarch: wasm
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: go build ./...
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+
+      - name: Measure
+        run: |
+          go test -count=1 -coverpkg=./... -coverprofile=coverage.out ./... > /dev/null
+          total=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}')
+          echo "Total coverage: $total"
+          echo "| package | coverage |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          go tool cover -func=coverage.out | tail -1 \
+            | awk '{printf "| **total** | %s |\n", $3}' >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
+          retention-days: 14

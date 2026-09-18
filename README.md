@@ -347,9 +347,10 @@ Built and verified:
 - **Phase 2** — `Noul`/`Choice`/`Score`, typed answers, validation, reference checking
 - **Phase 3** — cassettes, mock, test server, canonical hashing
 - **Phase 4** — retries, backoff, retry budget, circuit breaker
+- **Phase 6** — **the `decision` package**: probability algebra, weighted policies,
+  confidence bands, routing, and weight calibration from labeled data
 
-Next: the `decision` composition package, context-budget pre-flight, a CLI, and static
-analyzers. Full plan in
+Next: context-budget pre-flight, a CLI, and static analyzers. Full plan in
 [docs/Dev_Roadmap.md](docs/Dev_Roadmap.md).
 
 ---
