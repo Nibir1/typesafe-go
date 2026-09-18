@@ -1,0 +1,58 @@
+*.local.md
+*.local.*
+.notes/
+scratch/
+
+# ---- Go ----
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+CLAUDE.local.md
+dist/
+typesafe
+cmd/typesafe/typesafe
+
+# Test artifacts
+*.test
+*.out
+coverage.txt
+coverage.html
+profile.cov
+
+# Vendored deps (we keep zero deps; ignore if someone runs it locally)
+vendor/
+
+# Go workspace (local only)
+go.work
+.claude/
+go.work.sum
+
+# ---- Cassette hygiene ----
+# Never commit recorded cassettes containing real keys
+testdata/raw/
+CLAUDE.md
+testdata/cassettes/*.secret.json
+
+# ---- Editors / OS ----
+.idea/
+.vscode/
+Dev_Roadmap.md
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# ---- Env / secrets ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---- Build / release ----
+.goreleaser-local.yml
+/release-notes.md
