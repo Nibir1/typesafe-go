@@ -266,6 +266,38 @@ documentation mentions the limit. We found it by sending eleven.
 
 ---
 
+## Static analysis
+
+Three `go/analysis` analyzers, in a separate module so the core keeps its zero
+dependencies:
+
+```bash
+go install github.com/nibir1/typesafe-go/lint/cmd/typesafe-lint@latest
+go vet -vettool=$(which typesafe-lint) ./...
+```
+
+| | Catches |
+|---|---|
+| `atomicquestion` | Compound questions — one probability covering two propositions, which no threshold can split apart |
+| `jaggededge` | Questions hitting a **documented** Jev failure mode: counting, date comparison, hex values, double negatives, generation, inverted Noul criteria |
+| `confidencecheck` | Branching on an answer without reading its confidence; bare threshold literals; discarding the `ok` from `Confidence()` |
+
+Every `jaggededge` rule cites a section of TypeSafe's published model-jaggedness notes
+and repeats its recommended fix. That makes it a conformance checker rather than an
+opinion:
+
+```
+Noul instructions contain "how many". Jev does not count reliably — it recognizes
+the shape of an answer rather than tallying, and the error grows with the size of
+the thing being counted. Ask one Noul per item and sum the answers in code
+(jaggedness: Math and Numbers: Counting)
+```
+
+`//nolint:jaggededge <reason>` suppresses a finding, and a suppression **without** a
+reason is itself reported.
+
+---
+
 ## Configuration
 
 Resolution order, matching the official Python and JavaScript SDKs, so a process already
@@ -399,8 +431,10 @@ Built and verified:
   confidence bands, routing, and weight calibration from labeled data
 - **Phase 7** — context-budget and cost pre-flight, quota guard
 - **Phase 8** — the `typesafe` CLI
+- **Phase 9** — **three static analyzers**: `atomicquestion`, `jaggededge`,
+  `confidencecheck`
 
-Next: static analyzers. Full plan in
+Next: ergonomics, batching, generics, integrations. Full plan in
 [docs/Dev_Roadmap.md](docs/Dev_Roadmap.md).
 
 ---

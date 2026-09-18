@@ -83,6 +83,13 @@ func printJSON(v any) error {
 	return enc.Encode(v)
 }
 
+// uncertaintyBand is how close to 0.5 a Noul probability must be before the
+// display calls it out as genuine uncertainty rather than a weak opinion.
+//
+// Named because it is a judgment about what to tell the reader, not an
+// incidental number — which is exactly what confidencecheck flags.
+const uncertaintyBand = 0.1
+
 // printAnswers renders a response as a readable table.
 //
 // Each primitive gets the shape that suits it: a Noul is one number, a Choice
@@ -104,7 +111,7 @@ func printAnswers(resp *typesafe.SystemOneResponse) {
 		switch a := ans.(type) {
 		case typesafe.NoulAnswer:
 			fmt.Printf("%s  [noul]\n  %.4f  %s\n", id, a.Noul, bar(a.Noul))
-			if a.Uncertain(0.1) {
+			if a.Uncertain(uncertaintyBand) {
 				fmt.Printf("  near 0.5 — the model is expressing genuine uncertainty\n")
 			}
 			fmt.Println()

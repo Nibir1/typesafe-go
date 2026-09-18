@@ -22,6 +22,7 @@ func AssertChoice(tb TB, resp *typesafe.SystemOneResponse, id, want string) {
 		tb.Errorf("choice %q: %v", id, err)
 		return
 	}
+	//nolint:confidencecheck an assertion compares what was returned; confidence is asserted separately by AssertConfidenceAtLeast
 	if a.Choice != want {
 		tb.Errorf("choice %q = %q, want %q (probabilities: %v)", id, a.Choice, want, a.Ranked())
 	}
@@ -61,6 +62,7 @@ func AssertScoreBetween(tb TB, resp *typesafe.SystemOneResponse, id string, lo, 
 		tb.Errorf("score %q: %v", id, err)
 		return
 	}
+	//nolint:confidencecheck an assertion compares what was returned; confidence is asserted separately by AssertConfidenceAtLeast
 	if a.Score < lo || a.Score > hi {
 		tb.Errorf("score %q = %.4f, want within [%.4f, %.4f] (levels: %v)", id, a.Score, lo, hi, a.Levels())
 	}

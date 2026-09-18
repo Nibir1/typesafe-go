@@ -50,7 +50,7 @@ help: ## Show this help
 # --- the gates ---------------------------------------------------------------
 
 .PHONY: verify
-verify: tidy-check fmt-check vet vet-integration deps test-race contract fixtures secrets docs-check ## Full offline gate (run before pushing)
+verify: tidy-check fmt-check vet vet-integration deps test-race contract fixtures secrets docs-check lint-module analyzers ## Full offline gate (run before pushing)
 	@printf '\n$(OK)$(BOLD)  All offline checks passed.$(OFF)\n'
 	@printf '$(DIM)  `make live` additionally exercises the real API.$(OFF)\n\n'
 
@@ -90,6 +90,22 @@ vet-integration: ## go vet with the integration build tag
 	$(call step,go vet -tags=integration)
 	@$(GO) vet -tags=integration ./...
 	$(call pass,vet clean under the integration tag)
+
+.PHONY: analyzers
+analyzers: ## Build the TypeSafe analyzers and run them over this repository
+	$(call step,typesafe analyzers)
+	@cd lint && $(GO) build -o /tmp/typesafe-lint ./cmd/typesafe-lint
+	@out=$$($(GO) vet -vettool=/tmp/typesafe-lint ./... 2>&1 | grep -vE '^#' || true); \
+	if [ -n "$$out" ]; then \
+	  printf '$(ERR)  ✗ the analyzers flagged this repository:$(OFF)\n%s\n' "$$out"; exit 1; \
+	fi
+	$(call pass,no analyzer findings)
+
+.PHONY: lint-module
+lint-module: ## Test the analyzer module
+	$(call step,lint module)
+	@cd lint && $(GO) vet ./... && $(GO) test -count=1 ./...
+	$(call pass,analyzers pass their own tests)
 
 .PHONY: lint
 lint: ## golangci-lint, if installed
