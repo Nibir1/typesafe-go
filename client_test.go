@@ -23,9 +23,13 @@ func newTestClient(t *testing.T, h http.HandlerFunc, opts ...typesafe.Option) *t
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 
+	// Retries off by default here: these tests assert single-attempt
+	// behavior. Any test that wants retrying passes WithRetryPolicy itself,
+	// and options are applied in order so a later one wins.
 	all := append([]typesafe.Option{
 		typesafe.WithAPIKey(testKey),
 		typesafe.WithBaseURL(srv.URL),
+		typesafe.WithRetryPolicy(typesafe.NoRetry()),
 	}, opts...)
 
 	c, err := typesafe.NewClient(all...)
@@ -656,7 +660,8 @@ func TestConnectionFailure(t *testing.T) {
 	addr := l.Addr().String()
 	_ = l.Close()
 
-	c, err := typesafe.NewClient(typesafe.WithAPIKey(testKey), typesafe.WithBaseURL("http://"+addr))
+	c, err := typesafe.NewClient(typesafe.WithAPIKey(testKey), typesafe.WithBaseURL("http://"+addr),
+		typesafe.WithRetryPolicy(typesafe.NoRetry()))
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}

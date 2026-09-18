@@ -56,3 +56,6 @@ Thumbs.db
 # ---- Build / release ----
 .goreleaser-local.yml
 /release-notes.md
+# Python virtualenv used by `make fixtures`
+.venv/
+__pycache__/

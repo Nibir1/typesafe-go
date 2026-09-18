@@ -3,10 +3,10 @@
 `typesafe-go` is licensed under Apache-2.0. This file is the authoritative register of
 third-party code incorporated into it, and of the licenses that code carries.
 
-**Current status: no third-party code has been incorporated yet.** The repository
-contains no Go source as of 2026-09-18. The candidate projects in §3 are recorded ahead
-of time so that the attribution process exists before the first line of reused code
-lands, not after.
+**Current status: no third-party code has been incorporated.** Phases 0–3 are written
+and the core module still has zero dependencies — `make verify` fails if that changes.
+The candidate projects in §3 are recorded so the attribution process exists before any
+reused code lands, not after.
 
 ---
 
@@ -29,7 +29,8 @@ project is incorporated — copied verbatim, adapted, or translated:
 3. **The upstream license text preserved** in §4.
 
 A pull request that adds derived code without all three is not mergeable. This is
-enforced by review, and by the checklist item in `CONTRIBUTING.md`.
+enforced by review; `make deps` independently asserts that the core module has acquired
+no third-party *dependencies*, which is a related but distinct guarantee.
 
 ## 2. What counts as derived
 

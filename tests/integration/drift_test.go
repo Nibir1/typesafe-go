@@ -1,6 +1,6 @@
 //go:build integration
 
-package typesafe_test
+package integration_test
 
 // Contract drift detection.
 //
@@ -32,11 +32,13 @@ import (
 	"time"
 
 	typesafe "github.com/nibir1/typesafe-go"
+	"github.com/nibir1/typesafe-go/internal/fixtures"
 )
 
 var update = flag.Bool("update", false, "record observed error envelopes and headers")
 
-const observedDir = "testdata/contract/observed"
+// observedDir holds the captured error envelopes, written by -update.
+var observedDir = filepath.Join(fixtures.Root(), "testdata", "contract", "observed")
 
 func apiKey(t *testing.T) string {
 	t.Helper()
@@ -84,14 +86,9 @@ func TestContractDrift(t *testing.T) {
 	key := apiKey(t)
 	ctx := context.Background()
 
-	paths, err := filepath.Glob(filepath.Join(contractDir, "*.request.json"))
-	if err != nil || len(paths) == 0 {
-		t.Fatalf("no fixtures: %v", err)
-	}
-
-	for _, p := range paths {
-		t.Run(filepath.Base(p), func(t *testing.T) {
-			body, err := os.ReadFile(p)
+	for _, f := range fixtures.All(t) {
+		t.Run(f.Name, func(t *testing.T) {
+			body, err := os.ReadFile(f.RequestPath)
 			if err != nil {
 				t.Fatalf("read: %v", err)
 			}
@@ -114,10 +111,7 @@ func TestContractDrift(t *testing.T) {
 			}
 
 			// Same expectations the offline suite enforces, against live data.
-			want := readJSON(t, filepath.Join(filepath.Dir(p),
-				filepath.Base(p[:len(p)-len(".request.json")])+".response.json"))
-
-			assertSameShape(t, want, got, "")
+			assertSameShape(t, f.Response, got, "")
 
 			// The model that answered is reported, and may be a versioned id
 			// rather than the alias we sent.

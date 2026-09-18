@@ -3,6 +3,10 @@
 Authoritative wire contract for the TypeSafe System One API, as implemented by
 `github.com/nibir1/typesafe-go`.
 
+Read this before building anything non-trivial against the API. Several things the
+published documentation states are contradicted by the live service, and each is
+recorded below with the evidence.
+
 | | |
 |---|---|
 | **Locked** | 2026-09-18 |
@@ -10,7 +14,7 @@ Authoritative wire contract for the TypeSafe System One API, as implemented by
 | **Machine-readable source** | [`testdata/spec/openapi.json`](../testdata/spec/openapi.json) — OpenAPI 3.1.0, `TypeSafe` v0.2.0, served live at `https://api.typesafe.ai/openapi.json` |
 | **Prose source** | `https://docs.typesafe.ai/api`, `/primitives`, `/primitives/advanced`, `/concepts/state`, `/models` |
 | **Executable form** | [`testdata/contract/`](../testdata/contract/) — 10 golden request/response pairs, all schema-validated and all replayed live |
-| **Drift detection** | `go test -tags=integration -run TestContractDrift ./...` |
+| **Drift detection** | `make spec` (schema) · `make live` (behavior) |
 
 **Precedence rule.** Three sources, in descending authority: **the live API**, then the
 OpenAPI schema, then the prose docs. Where they disagree this document records all of
@@ -146,7 +150,7 @@ move without notice.
 
 **There is no `confidence` field, and adding one is a bug.** The probability *is* the
 uncertainty: near 0.5 is the model saying it does not know. Code that reads a confidence
-off a Noul reads a zero that means nothing. Guarded by `TestNoulAnswerHasNoConfidence`.
+off a Noul reads a zero that means nothing. Guarded by `TestNoulAnswerHasNoConfidence` in `tests/contract`.
 
 ### 5.2 Choice — `required: ["type", "choice", "probabilities", "confidence"]`
 
@@ -188,8 +192,8 @@ off a Noul reads a zero that means nothing. Guarded by `TestNoulAnswerHasNoConfi
 >
 > The SDK still parses keys as integers rather than sorting them as strings. That is
 > cheap insurance against the cap being raised, not a defect being fixed.
-> `TestScoreLevelKeysAreContiguousIntegers` asserts the invariant that actually holds:
-> keys are the contiguous integers `0..n-1`.
+> > `TestScoreLevelKeysAreContiguousIntegers` (in `tests/contract`) asserts the invariant
+> that actually holds: keys are the contiguous integers `0..n-1`.
 
 > ### ⚠ `legend` values are `EntryType`, not `string`
 >
@@ -360,7 +364,7 @@ alone. The SDK permits it and warns.
 
 **Provenance.** Every request validates against the live schema, and **all ten have been
 replayed against the live API and returned a shape matching their fixture** (2026-09-18,
-`TestContractDrift`). The contract reading in this document is therefore verified, not
+`make live`). The contract reading in this document is therefore verified, not
 inferred.
 
 Response fixtures are still *constructed* rather than captured, except
@@ -371,3 +375,16 @@ probabilities are invented.
 
 Do not cite a fixture's numbers as evidence of model behavior. Its *shape* is verified;
 its *values* are illustrative.
+
+## 10. Keeping this current
+
+```bash
+make spec        # has the served OpenAPI document drifted from the vendored copy?
+make fixtures    # do all golden fixtures still satisfy the schema?
+make live        # does the live API still match every fixture's shape?
+```
+
+`.github/workflows/contract-drift.yml` runs all three weekly and opens a failure when the
+contract moves. A failure there is not a bug in this repository — it means the API
+changed, or our reading of it was wrong. Both warrant investigation before anything else
+is built on top.

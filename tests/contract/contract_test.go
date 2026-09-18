@@ -1,4 +1,4 @@
-package typesafe_test
+package contract_test
 
 // Phase 0 contract lock.
 //
@@ -12,15 +12,12 @@ package typesafe_test
 import (
 	"encoding/json"
 	"math"
-	"os"
-	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"testing"
-)
 
-const contractDir = "testdata/contract"
+	"github.com/nibir1/typesafe-go/internal/fixtures"
+)
 
 // maxScoreLevels is the server-enforced ceiling on Score rubric levels.
 // Undocumented in both the OpenAPI schema and the prose docs; established by
@@ -31,50 +28,11 @@ const maxScoreLevels = 10
 // tolerance for float comparisons on probability distributions.
 const eps = 1e-6
 
-type fixture struct {
-	name string
-	req  map[string]any
-	resp map[string]any
-}
+type fixture = fixtures.Fixture
 
-func loadFixtures(t *testing.T) []fixture {
-	t.Helper()
-	paths, err := filepath.Glob(filepath.Join(contractDir, "*.request.json"))
-	if err != nil {
-		t.Fatalf("glob: %v", err)
-	}
-	if len(paths) == 0 {
-		t.Fatalf("no fixtures found in %s", contractDir)
-	}
-	sort.Strings(paths)
+func loadFixtures(t *testing.T) []fixture { return fixtures.All(t) }
 
-	out := make([]fixture, 0, len(paths))
-	for _, reqPath := range paths {
-		name := strings.TrimSuffix(filepath.Base(reqPath), ".request.json")
-		respPath := strings.TrimSuffix(reqPath, ".request.json") + ".response.json"
-		out = append(out, fixture{
-			name: name,
-			req:  readJSON(t, reqPath),
-			resp: readJSON(t, respPath),
-		})
-	}
-	return out
-}
-
-func readJSON(t *testing.T, path string) map[string]any {
-	t.Helper()
-	b, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read %s: %v", path, err)
-	}
-	var m map[string]any
-	dec := json.NewDecoder(strings.NewReader(string(b)))
-	dec.UseNumber() // preserve numeric fidelity; we compare exact values
-	if err := dec.Decode(&m); err != nil {
-		t.Fatalf("parse %s: %v", path, err)
-	}
-	return m
-}
+func readJSON(t *testing.T, path string) map[string]any { return fixtures.ReadJSON(t, path) }
 
 func num(t *testing.T, v any, ctx string) float64 {
 	t.Helper()
@@ -93,15 +51,15 @@ func num(t *testing.T, v any, ctx string) float64 {
 // OpenAPI schema: state, model, and a non-empty questions map.
 func TestRequestShape(t *testing.T) {
 	for _, f := range loadFixtures(t) {
-		t.Run(f.name, func(t *testing.T) {
+		t.Run(f.Name, func(t *testing.T) {
 			for _, k := range []string{"state", "model", "questions"} {
-				if _, ok := f.req[k]; !ok {
+				if _, ok := f.Request[k]; !ok {
 					t.Errorf("request is missing required field %q", k)
 				}
 			}
-			qs, ok := f.req["questions"].(map[string]any)
+			qs, ok := f.Request["questions"].(map[string]any)
 			if !ok {
-				t.Fatalf("questions is %T, want object", f.req["questions"])
+				t.Fatalf("questions is %T, want object", f.Request["questions"])
 			}
 			if len(qs) == 0 {
 				t.Error("questions is empty; the schema requires minProperties: 1")
@@ -140,11 +98,11 @@ func TestRequestShape(t *testing.T) {
 // same ids the caller chose.
 func TestEveryQuestionIsAnswered(t *testing.T) {
 	for _, f := range loadFixtures(t) {
-		t.Run(f.name, func(t *testing.T) {
-			qs := f.req["questions"].(map[string]any)
-			as, ok := f.resp["answers"].(map[string]any)
+		t.Run(f.Name, func(t *testing.T) {
+			qs := f.Request["questions"].(map[string]any)
+			as, ok := f.Response["answers"].(map[string]any)
 			if !ok {
-				t.Fatalf("answers is %T, want object", f.resp["answers"])
+				t.Fatalf("answers is %T, want object", f.Response["answers"])
 			}
 			for id := range qs {
 				a, ok := as[id]
@@ -172,8 +130,8 @@ func TestEveryQuestionIsAnswered(t *testing.T) {
 // that reads a Confidence off a Noul is reading a zero that means nothing.
 func TestNoulAnswerHasNoConfidence(t *testing.T) {
 	for _, f := range loadFixtures(t) {
-		t.Run(f.name, func(t *testing.T) {
-			for id, raw := range f.resp["answers"].(map[string]any) {
+		t.Run(f.Name, func(t *testing.T) {
+			for id, raw := range f.Response["answers"].(map[string]any) {
 				a := raw.(map[string]any)
 				if a["type"] != "noul" {
 					continue
@@ -198,9 +156,9 @@ func TestNoulAnswerHasNoConfidence(t *testing.T) {
 // reported choice is the highest-probability option.
 func TestChoiceAnswerInvariants(t *testing.T) {
 	for _, f := range loadFixtures(t) {
-		t.Run(f.name, func(t *testing.T) {
-			qs := f.req["questions"].(map[string]any)
-			for id, raw := range f.resp["answers"].(map[string]any) {
+		t.Run(f.Name, func(t *testing.T) {
+			qs := f.Request["questions"].(map[string]any)
+			for id, raw := range f.Response["answers"].(map[string]any) {
 				a := raw.(map[string]any)
 				if a["type"] != "choice" {
 					continue
@@ -251,9 +209,9 @@ func TestChoiceAnswerInvariants(t *testing.T) {
 // is the probability-weighted mean of the level indices.
 func TestScoreAnswerInvariants(t *testing.T) {
 	for _, f := range loadFixtures(t) {
-		t.Run(f.name, func(t *testing.T) {
-			qs := f.req["questions"].(map[string]any)
-			for id, raw := range f.resp["answers"].(map[string]any) {
+		t.Run(f.Name, func(t *testing.T) {
+			qs := f.Request["questions"].(map[string]any)
+			for id, raw := range f.Response["answers"].(map[string]any) {
 				a := raw.(map[string]any)
 				if a["type"] != "score" {
 					continue
@@ -337,7 +295,7 @@ func TestScoreAnswerInvariants(t *testing.T) {
 func TestScoreLevelKeysAreContiguousIntegers(t *testing.T) {
 	var checked int
 	for _, f := range loadFixtures(t) {
-		for id, raw := range f.resp["answers"].(map[string]any) {
+		for id, raw := range f.Response["answers"].(map[string]any) {
 			a := raw.(map[string]any)
 			if a["type"] != "score" {
 				continue
@@ -347,7 +305,7 @@ func TestScoreLevelKeysAreContiguousIntegers(t *testing.T) {
 
 			if len(legend) > maxScoreLevels {
 				t.Errorf("fixture %s answer %q: %d levels exceeds the server maximum of %d",
-					f.name, id, len(legend), maxScoreLevels)
+					f.Name, id, len(legend), maxScoreLevels)
 			}
 
 			seen := make([]bool, len(legend))
@@ -355,22 +313,22 @@ func TestScoreLevelKeysAreContiguousIntegers(t *testing.T) {
 				i, err := strconv.Atoi(k)
 				if err != nil {
 					t.Errorf("fixture %s answer %q: legend key %q is not an integer string",
-						f.name, id, k)
+						f.Name, id, k)
 					continue
 				}
 				if i < 0 || i >= len(legend) {
 					t.Errorf("fixture %s answer %q: level %d outside 0..%d",
-						f.name, id, i, len(legend)-1)
+						f.Name, id, i, len(legend)-1)
 					continue
 				}
 				if seen[i] {
-					t.Errorf("fixture %s answer %q: level %d appears twice", f.name, id, i)
+					t.Errorf("fixture %s answer %q: level %d appears twice", f.Name, id, i)
 				}
 				seen[i] = true
 			}
 			for i, ok := range seen {
 				if !ok {
-					t.Errorf("fixture %s answer %q: level %d missing", f.name, id, i)
+					t.Errorf("fixture %s answer %q: level %d missing", f.Name, id, i)
 				}
 			}
 		}
@@ -387,7 +345,7 @@ func TestScoreLevelKeysAreContiguousIntegers(t *testing.T) {
 func TestScoreLevelBoundsAreCovered(t *testing.T) {
 	var sawMin, sawMax bool
 	for _, f := range loadFixtures(t) {
-		for _, raw := range f.req["questions"].(map[string]any) {
+		for _, raw := range f.Request["questions"].(map[string]any) {
 			q := raw.(map[string]any)
 			if q["type"] != "score" {
 				continue
@@ -415,7 +373,7 @@ func TestScoreLevelBoundsAreCovered(t *testing.T) {
 func TestNullCriteriaSurviveRoundTrip(t *testing.T) {
 	var found bool
 	for _, f := range loadFixtures(t) {
-		for id, raw := range f.req["questions"].(map[string]any) {
+		for id, raw := range f.Request["questions"].(map[string]any) {
 			q := raw.(map[string]any)
 			crit, ok := q["criteria"].(map[string]any)
 			if !ok {
@@ -429,12 +387,12 @@ func TestNullCriteriaSurviveRoundTrip(t *testing.T) {
 				// Re-marshal and confirm the null is still a null.
 				b, err := json.Marshal(crit)
 				if err != nil {
-					t.Fatalf("marshal %s/%s: %v", f.name, id, err)
+					t.Fatalf("marshal %s/%s: %v", f.Name, id, err)
 				}
 				want := `"` + opt + `":null`
 				if !strings.Contains(string(b), want) {
 					t.Errorf("fixture %s question %q: option %q lost its null on re-marshal: %s",
-						f.name, id, opt, b)
+						f.Name, id, opt, b)
 				}
 			}
 		}
@@ -447,10 +405,10 @@ func TestNullCriteriaSurviveRoundTrip(t *testing.T) {
 // TestUsageIsPresent asserts token accounting is reported on every response.
 func TestUsageIsPresent(t *testing.T) {
 	for _, f := range loadFixtures(t) {
-		t.Run(f.name, func(t *testing.T) {
-			u, ok := f.resp["usage"].(map[string]any)
+		t.Run(f.Name, func(t *testing.T) {
+			u, ok := f.Response["usage"].(map[string]any)
 			if !ok {
-				t.Fatalf("usage is %T, want object", f.resp["usage"])
+				t.Fatalf("usage is %T, want object", f.Response["usage"])
 			}
 			for _, k := range []string{"input_tokens", "output_tokens"} {
 				v, ok := u[k]
@@ -462,7 +420,7 @@ func TestUsageIsPresent(t *testing.T) {
 					t.Errorf("usage.%s = %v, want a non-negative integer", k, n)
 				}
 			}
-			if _, ok := f.resp["model"].(string); !ok {
+			if _, ok := f.Response["model"].(string); !ok {
 				t.Error("response is missing the model that answered")
 			}
 		})

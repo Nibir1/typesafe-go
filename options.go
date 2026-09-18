@@ -22,6 +22,10 @@ type config struct {
 	headers      http.Header
 	logger       *slog.Logger
 	uaSuffix     string
+	retry        RetryPolicy
+	observer     func(AttemptInfo)
+	clk          clock
+	breaker      *CircuitBreaker
 }
 
 // WithAPIKey sets the key explicitly, taking precedence over TYPESAFE_API_KEY.
@@ -72,8 +76,9 @@ func WithDefaultModel(model string) Option {
 // WithTimeout bounds each HTTP operation. The default is 10s, matching the
 // official SDKs.
 //
-// This is per operation, not per call. Once retries land (Phase 4) a single
-// SystemOne may span several operations and have its own overall budget.
+// This is per operation, not per call: a single SystemOne may span several
+// operations when retrying, bounded separately by RetryPolicy.Timeout.
+// Whichever fires first wins.
 func WithTimeout(d time.Duration) Option {
 	return func(c *config) error {
 		if d <= 0 {
@@ -145,6 +150,67 @@ func WithUserAgentSuffix(suffix string) Option {
 			return fmt.Errorf("%w: user agent suffix must not contain newlines", ErrInvalidConfig)
 		}
 		c.uaSuffix = s
+		return nil
+	}
+}
+
+// WithRetryPolicy replaces the whole retry policy.
+//
+// The default matches the official Python and JavaScript SDKs: two retries,
+// 500ms initial backoff doubling to a 5s ceiling, ±25% jitter, retrying 408,
+// 429 and 5xx, honoring retry-after, within a 30s overall budget.
+//
+//	typesafe.WithRetryPolicy(typesafe.NoRetry())
+//
+//	p := typesafe.DefaultRetryPolicy()
+//	p.MaxRetries = 5
+//	typesafe.WithRetryPolicy(p)
+func WithRetryPolicy(p RetryPolicy) Option {
+	return func(c *config) error {
+		if err := p.validate(); err != nil {
+			return err
+		}
+		c.retry = p
+		return nil
+	}
+}
+
+// WithMaxRetries adjusts only the retry count, leaving the rest of the default
+// policy alone. Zero disables retrying.
+func WithMaxRetries(n int) Option {
+	return func(c *config) error {
+		if n < 0 {
+			return fmt.Errorf("%w: max retries must not be negative, got %d", ErrInvalidConfig, n)
+		}
+		c.retry.MaxRetries = n
+		return nil
+	}
+}
+
+// WithRetryObserver registers a callback invoked after each failed attempt
+// that will be retried, before the backoff begins.
+//
+// Useful for metrics and for surfacing retry behavior in traces. It is called
+// synchronously on the calling goroutine, so keep it quick and do not block.
+//
+//	typesafe.WithRetryObserver(func(a typesafe.AttemptInfo) {
+//	    metrics.Retries.WithLabelValues(strconv.Itoa(a.Status)).Inc()
+//	})
+func WithRetryObserver(fn func(AttemptInfo)) Option {
+	return func(c *config) error {
+		if fn == nil {
+			return fmt.Errorf("%w: WithRetryObserver given nil", ErrInvalidConfig)
+		}
+		c.observer = fn
+		return nil
+	}
+}
+
+// withClock injects a clock, for tests that need backoff without real waiting.
+// Unexported: production callers have no reason to replace time.
+func withClock(k clock) Option {
+	return func(c *config) error {
+		c.clk = k
 		return nil
 	}
 }

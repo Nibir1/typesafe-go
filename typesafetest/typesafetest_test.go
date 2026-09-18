@@ -12,10 +12,21 @@ import (
 	"github.com/nibir1/typesafe-go/typesafetest"
 )
 
+// serverClient builds a client with retries disabled.
+//
+// These tests assert what a single attempt does — which status maps to which
+// error, what reached the wire. With the default policy every 429 and 5xx
+// would be retried, so one call would consume several scripted responses and
+// the suite would spend its time in real backoff. Retry behavior has its own
+// tests in the root package, where the clock is injected.
 func serverClient(t *testing.T, responses ...http.HandlerFunc) (*typesafe.Client, *typesafetest.Server) {
 	t.Helper()
 	srv := typesafetest.NewServer(t, responses...)
-	c, err := typesafe.NewClient(typesafe.WithAPIKey("test"), typesafe.WithBaseURL(srv.URL))
+	c, err := typesafe.NewClient(
+		typesafe.WithAPIKey("test"),
+		typesafe.WithBaseURL(srv.URL),
+		typesafe.WithRetryPolicy(typesafe.NoRetry()),
+	)
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
@@ -68,6 +79,7 @@ func TestServerProducesEveryDocumentedError(t *testing.T) {
 		c, err := typesafe.NewClient(
 			typesafe.WithAPIKey("test"),
 			typesafe.WithHTTPClient(typesafetest.FailingTransport(errors.New("dial refused"))),
+			typesafe.WithRetryPolicy(typesafe.NoRetry()),
 		)
 		if err != nil {
 			t.Fatalf("NewClient: %v", err)
@@ -103,7 +115,7 @@ func TestRateLimitedCarriesRetryAfter(t *testing.T) {
 }
 
 // TestServerAdvancesThroughResponses: scripting a failure then a success is
-// what Phase 4's retry tests will need.
+// what the retry tests need, so the double has to advance reliably.
 func TestServerAdvancesThroughResponses(t *testing.T) {
 	c, srv := serverClient(t,
 		typesafetest.Status(500),

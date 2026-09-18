@@ -27,6 +27,10 @@ const maxErrorBody = 1 << 20 // 1 MiB
 // is meant to be created once and shared.
 type Client struct {
 	apiKey       string
+	retry        RetryPolicy
+	observer     func(AttemptInfo)
+	clk          clock
+	breaker      *CircuitBreaker
 	baseURL      string
 	defaultModel string
 	httpClient   *http.Client
@@ -57,6 +61,7 @@ func NewClient(opts ...Option) (*Client, error) {
 		defaultModel: firstNonEmpty(os.Getenv(EnvDefaultModel), DefaultModel),
 		apiKey:       os.Getenv(EnvAPIKey),
 		timeout:      DefaultTimeout,
+		retry:        DefaultRetryPolicy(),
 	}
 	for _, opt := range opts {
 		if opt == nil {
@@ -69,6 +74,9 @@ func NewClient(opts ...Option) (*Client, error) {
 
 	if strings.TrimSpace(cfg.apiKey) == "" {
 		return nil, fmt.Errorf("%w: set %s or pass WithAPIKey", ErrNoAPIKey, EnvAPIKey)
+	}
+	if err := cfg.retry.validate(); err != nil {
+		return nil, err
 	}
 
 	hc := cfg.httpClient
@@ -88,8 +96,17 @@ func NewClient(opts ...Option) (*Client, error) {
 		ua += " " + cfg.uaSuffix
 	}
 
+	clk := cfg.clk
+	if clk == nil {
+		clk = realClock{}
+	}
+
 	return &Client{
 		apiKey:       cfg.apiKey,
+		retry:        cfg.retry,
+		observer:     cfg.observer,
+		clk:          clk,
+		breaker:      cfg.breaker,
 		baseURL:      strings.TrimRight(cfg.baseURL, "/"),
 		defaultModel: cfg.defaultModel,
 		httpClient:   hc,
@@ -208,11 +225,137 @@ func (c *Client) Models(ctx context.Context) ([]ModelCard, error) {
 	return out.Models, nil
 }
 
-// do performs one HTTP operation and returns the response body.
+// do performs the operation, retrying per the client's policy.
 //
-// Phase 1 makes exactly one attempt. Retries, backoff, and the overall budget
-// arrive in Phase 4 and wrap this method rather than changing it.
+// The request body is marshalled once by the caller and handed here as bytes,
+// so every attempt sends byte-identical content. Re-marshalling per attempt
+// would risk drift — a map iterated in a different order is a different
+// request, and a server that deduplicates would not recognize the retry.
 func (c *Client) do(ctx context.Context, method, path string, body []byte) ([]byte, string, error) {
+	ep := endpoint(method, path)
+	started := c.clk.Now()
+
+	// The overall budget spans every attempt and every backoff, and is
+	// distinct from the per-operation timeout on the HTTP client.
+	//
+	// It is tracked on the client's own clock rather than read back from
+	// ctx.Deadline(). A context deadline is always real time, so comparing it
+	// against an injected clock compares two unrelated timelines — which is
+	// exactly the bug this comment replaced. The context timeout is still set,
+	// because it is what actually interrupts an in-flight request.
+	var budget time.Time
+	if c.retry.Timeout > 0 {
+		budget = started.Add(c.retry.Timeout)
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.retry.Timeout)
+		defer cancel()
+	}
+
+	var (
+		lastErr error
+		made    int  // attempts actually performed
+		retried bool // whether any backoff was actually waited out
+	)
+	for attempt := 0; ; attempt++ {
+		// The breaker gates every attempt, not just the first: an outage that
+		// begins mid-retry should stop the remaining attempts too.
+		if err := c.guardOpen(ctx); err != nil {
+			if lastErr != nil {
+				// Report what was actually failing, with the breaker's
+				// rejection as context rather than as a replacement.
+				return nil, "", errors.Join(err, lastErr)
+			}
+			return nil, "", err
+		}
+
+		made++
+		raw, requestID, err := c.attempt(ctx, method, path, body)
+		c.guardRecord(err)
+		if err == nil {
+			return raw, requestID, nil
+		}
+		lastErr = err
+
+		if attempt >= c.retry.MaxRetries || !c.retry.shouldRetry(err) {
+			break
+		}
+
+		delay, honored := c.retry.retryAfterFrom(err)
+		if honored {
+			// A server asking for longer than we are willing to wait is not a
+			// reason to block the caller; it is a reason to return the error
+			// they can act on. The retry-after is already on the typed error.
+			if c.retry.MaxRetryAfter > 0 && delay > c.retry.MaxRetryAfter {
+				c.log(ctx, slog.LevelWarn, "typesafe retry-after exceeds the cap",
+					"endpoint", ep, "retry_after", delay, "cap", c.retry.MaxRetryAfter)
+				break
+			}
+		} else {
+			delay = c.retry.delayFor(attempt)
+		}
+
+		// Never sleep past the budget: waiting out a deadline we already know
+		// we will miss wastes the caller's time for no possible benefit.
+		if !budget.IsZero() {
+			if remaining := budget.Sub(c.clk.Now()); delay >= remaining {
+				c.log(ctx, slog.LevelWarn, "typesafe backoff would exceed the retry budget",
+					"endpoint", ep, "delay_ms", delay.Milliseconds(),
+					"remaining_ms", remaining.Milliseconds())
+				break
+			}
+		}
+
+		status := 0
+		var api *APIError
+		if errors.As(err, &api) {
+			status = api.Status
+		}
+		info := AttemptInfo{
+			Attempt:           attempt + 1,
+			Err:               err,
+			Status:            status,
+			Delay:             delay,
+			RetryAfterHonored: honored,
+			Elapsed:           c.clk.Now().Sub(started),
+		}
+		c.log(ctx, slog.LevelWarn, "typesafe retrying",
+			"endpoint", ep, "attempt", info.Attempt, "status", status,
+			"delay_ms", delay.Milliseconds(), "retry_after_honored", honored)
+		if c.observer != nil {
+			c.observer(info)
+		}
+
+		if err := c.clk.Sleep(ctx, delay); err != nil {
+			// Cancelled or out of budget mid-backoff. Report the API failure
+			// that caused the wait, not the timer: the caller wants to know
+			// why we were waiting, not that a timer was interrupted.
+			return nil, "", c.exhausted(made, started, lastErr)
+		}
+		retried = true
+	}
+
+	// Only claim exhaustion when retrying actually happened. Breaking out
+	// early — a non-retryable status, a retry-after past the cap, a backoff
+	// that would outlast the budget — is not the same thing, and reporting
+	// "gave up after 3 attempts" when one was made would be a lie in an error
+	// message someone is trying to debug from.
+	if retried {
+		return nil, "", c.exhausted(made, started, lastErr)
+	}
+	return nil, "", lastErr
+}
+
+// exhausted wraps the terminal error, keeping it reachable through errors.As.
+func (c *Client) exhausted(attempts int, started time.Time, last error) error {
+	return &retriesExhaustedError{
+		attempts: attempts,
+		elapsed:  c.clk.Now().Sub(started),
+		last:     last,
+	}
+}
+
+// attempt performs exactly one HTTP operation.
+func (c *Client) attempt(ctx context.Context, method, path string, body []byte) ([]byte, string, error) {
 	ep := endpoint(method, path)
 
 	var reader io.Reader

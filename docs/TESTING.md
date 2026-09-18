@@ -95,6 +95,18 @@ func TestHandlesRateLimit(t *testing.T) {
 Responses are served in order, and the last one repeats, so a test that does not care
 how many calls happen does not have to count them.
 
+> **Turn retries off when asserting single-attempt behavior.** Retries are on by
+> default, so one `SystemOne` call will consume several scripted `429` or `5xx`
+> responses and spend real time in backoff. Tests that assert which status maps to
+> which error want:
+>
+> ```go
+> typesafe.WithRetryPolicy(typesafe.NoRetry())
+> ```
+>
+> This repository's own suites learned that the noisy way: adding retries turned a
+> 0.3s package into a 27s one and broke a test that had scripted three failures.
+
 ### Every documented failure
 
 | Helper | Produces |
@@ -214,6 +226,24 @@ starts recording headers.
 
 ---
 
+## Testing retry behavior
+
+Waiting out real backoff makes a suite slow without proving the delays were right. Two
+approaches, both used here:
+
+**Inject a clock** (works on every supported Go version). This SDK's own retry tests use
+an unexported `withClock` option; your code can do the same by wrapping the transport and
+asserting on timing indirectly, or by scripting responses and counting calls.
+
+**`testing/synctest`** (Go 1.25+). Inside a bubble, time is virtual and only advances
+once every goroutine is durably blocked, so a 30-second retry budget elapses instantly
+while the production timer code runs unmodified.
+
+> One constraint worth knowing: **synctest does not work with a real network.** A
+> goroutine blocked on a socket read is not *durably* blocked, so the clock never
+> advances and the test hangs until the binary times out. Use an in-memory
+> `http.RoundTripper` inside a bubble, not `httptest.NewServer`.
+
 ## Assertions
 
 ```go
@@ -256,6 +286,25 @@ does not resolve those — the model just sees a path naming nothing and answers
 Nothing in the response tells you it happened.
 
 ---
+
+## Running this repository's own tests
+
+```bash
+make verify   # the full offline gate: fmt, vet, race tests, contract suite,
+              # fixture validation, secret scan, doc coverage
+make live     # the above, plus the live API (needs TYPESAFE_API_KEY)
+make test     # just the offline unit tests, fast
+make flake    # repeat five times under -race to surface flakes
+make cover    # cross-package coverage
+```
+
+Suites are split by what they need:
+
+| Path | Needs | Run by |
+|---|---|---|
+| `./...` (package tests) | nothing | `make test` |
+| `tests/contract/` | nothing | `make contract` |
+| `tests/integration/` | a live key, `-tags=integration` | `make integration` |
 
 ## CI
 
