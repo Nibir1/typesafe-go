@@ -195,15 +195,23 @@ func (c *Client) systemOne(ctx context.Context, req *SystemOneRequest) (*SystemO
 
 	// Pre-flight, in cost order: the cheapest refusals come first, and none of
 	// them touch the network.
-	est := req.EstimateTokens()
-	if c.checkContext {
-		if err := est.Err(); err != nil {
-			return nil, err
+	//
+	// The estimate walks the whole request and is the most expensive thing the
+	// SDK does per call — measured at roughly a third of its total overhead —
+	// so it is computed only when something will actually read it. Computing
+	// it regardless made WithContextLimitCheck(false) free of consequence,
+	// which is not what an option that exists to remove work should do.
+	if c.checkContext || c.budget != nil {
+		est := req.EstimateTokens()
+		if c.checkContext {
+			if err := est.Err(); err != nil {
+				return nil, err
+			}
 		}
-	}
-	if c.budget != nil {
-		if err := c.budget.check(est.Total); err != nil {
-			return nil, err
+		if c.budget != nil {
+			if err := c.budget.check(est.Total); err != nil {
+				return nil, err
+			}
 		}
 	}
 

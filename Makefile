@@ -50,7 +50,7 @@ help: ## Show this help
 # --- the gates ---------------------------------------------------------------
 
 .PHONY: verify
-verify: tidy-check fmt-check integrations-fmt vet vet-integration deps deps-graph test-race contract fixtures secrets docs-check dashboards lint-module submodules integrations analyzers ## Full offline gate (run before pushing)
+verify: tidy-check fmt-check integrations-fmt vet vet-integration deps deps-graph test-race contract fixtures secrets docs-check links bench-check dashboards lint-module submodules integrations examples analyzers ## Full offline gate (run before pushing)
 	@printf '\n$(OK)$(BOLD)  All offline checks passed.$(OFF)\n'
 	@printf '$(DIM)  `make live` additionally exercises the real API.$(OFF)\n\n'
 
@@ -122,6 +122,7 @@ lint-module: ## Test the analyzer module
 # does not reach any of them, which is the whole point of the split.
 SUBMODULES := typesafecache typesafeotel typesafeprom
 INTEGRATIONS := $(addprefix integrations/,nethttp gin echo fiber langchaingo temporal mcp)
+EXAMPLES := examples
 
 .PHONY: submodules
 submodules: ## Test the optional submodules (cache, otel, prom)
@@ -141,10 +142,22 @@ integrations: ## Test the integration modules
 	done
 	$(call pass,integrations pass their own tests)
 
+.PHONY: examples
+examples: ## Run the runnable examples against their cassettes
+	$(call step,examples)
+	@cd examples && $(GO) vet ./... && $(GO) test -count=1 ./...
+	$(call pass,examples pass against their cassettes)
+
+.PHONY: examples-record
+examples-record: ## Re-record every example cassette against the live API
+	$(call step,recording example cassettes)
+	@cd examples && $(GO) test -count=1 -update ./...
+	$(call pass,cassettes re-recorded)
+
 .PHONY: integrations-fmt
 integrations-fmt: ## Fail if any module outside the root is unformatted
 	$(call step,gofmt across every module)
-	@out=$$(gofmt -l $(SUBMODULES) $(INTEGRATIONS) deploy 2>/dev/null); \
+	@out=$$(gofmt -l $(SUBMODULES) $(INTEGRATIONS) $(EXAMPLES) deploy 2>/dev/null); \
 	if [ -n "$$out" ]; then \
 	  printf '$(ERR)  ✗ unformatted files:$(OFF)\n%s\n' "$$out"; exit 1; \
 	fi
@@ -161,6 +174,17 @@ deps-graph: ## Assert the core module's dependency graph is empty
 	  printf '$(ERR)  ✗ the core module has dependencies:$(OFF)\n%s\n' "$$out"; exit 1; \
 	fi
 	$(call pass,go mod graph has no third-party edges)
+
+.PHONY: bench-check
+bench-check: ## Run every benchmark once, to prove they still build
+	$(call step,benchmarks build)
+	@$(GO) test -run=NONE -bench=. -benchtime=1x ./... > /dev/null
+	$(call pass,benchmarks build and run)
+
+.PHONY: links
+links: ## Assert every relative link in the docs resolves
+	$(call step,doc links)
+	@python3 scripts/check_links.py
 
 .PHONY: dashboards
 dashboards: ## Validate the committed Grafana dashboards
@@ -261,9 +285,25 @@ cover-html: cover ## Open the coverage report in a browser
 	@$(GO) tool cover -html=$(COVEROUT)
 
 .PHONY: bench
-bench: ## Run benchmarks
+bench: ## Run benchmarks (BENCHOUT=file to save for a comparison)
 	$(call step,benchmarks)
-	@$(GO) test -run '^$$' -bench=. -benchmem ./... 2>&1 | grep -v '^\(ok\|PASS\|no test files\|---\)' || true
+	@$(GO) test -run '^$$' -bench=. -benchmem -count=$(BENCHCOUNT) ./... 2>&1 \
+	  | tee $(if $(BENCHOUT),$(BENCHOUT),/dev/null) \
+	  | grep -v '^\(ok\|PASS\|no test files\|---\)' || true
+
+# Runs enough times to see the spread. One run of a benchmark is an anecdote.
+BENCHCOUNT ?= 3
+
+.PHONY: bench-compare
+bench-compare: ## Compare two saved benchmark runs: make bench-compare OLD=a.txt NEW=b.txt
+	$(call step,benchmark comparison)
+	@if [ -z "$(OLD)" ] || [ -z "$(NEW)" ]; then \
+	  printf '$(ERR)  ✗ usage: make bench-compare OLD=old.txt NEW=new.txt$(OFF)\n'; exit 2; \
+	fi
+	@python3 scripts/check_benchmarks.py $(OLD) $(NEW) --threshold $(BENCHTHRESHOLD)
+
+# The same threshold CI uses.
+BENCHTHRESHOLD ?= 10
 
 # --- fixtures and the wire contract ------------------------------------------
 

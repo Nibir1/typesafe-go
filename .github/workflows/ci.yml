@@ -187,6 +187,72 @@ jobs:
         working-directory: deploy/example
         run: go build ./... && go vet ./...
 
+  # Benchmarks, compared against the base branch on the same runner.
+  #
+  # A committed baseline would be worthless: benchmark numbers belong to the
+  # machine that produced them, and a figure from a laptop says nothing about a
+  # CI runner. Both sides are measured here, in this job, and only the ratio is
+  # used.
+  benchmarks:
+    name: Benchmark regression
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Benchmark the base branch
+        run: |
+          git checkout --detach origin/${{ github.base_ref }}
+          go test -run=NONE -bench=. -benchtime=200ms -count=5 ./... > /tmp/base.txt 2>&1 || true
+          git checkout --detach ${{ github.sha }}
+
+      - name: Benchmark this branch
+        run: go test -run=NONE -bench=. -benchtime=200ms -count=5 ./... > /tmp/head.txt 2>&1
+
+      - name: Compare
+        run: python3 scripts/check_benchmarks.py /tmp/base.txt /tmp/head.txt --threshold 10
+
+  # On a push there is nothing to compare against, so the benchmarks are run
+  # only to prove they still compile and pass. A benchmark that stops building
+  # is discovered here rather than the next time someone needs it.
+  benchmarks-build:
+    name: Benchmarks build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+      - name: Run every benchmark once
+        run: go test -run=NONE -bench=. -benchtime=1x ./...
+
+  # The runnable examples, replayed against their committed cassettes. No key,
+  # no network. An example that stops compiling or stops producing sensible
+  # output is caught here rather than by the next person who copies it.
+  examples:
+    name: Examples
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: examples/go.mod
+      - name: Vet
+        working-directory: examples
+        run: go vet ./...
+      - name: Replay
+        working-directory: examples
+        run: go test -count=1 ./...
+
   dashboards:
     name: Grafana dashboards
     runs-on: ubuntu-latest
@@ -228,6 +294,9 @@ jobs:
         with:
           python-version: "3.13"
       - run: python3 scripts/check_docs.py
+      # A broken cross-reference is the least visible documentation defect:
+      # nothing fails, the reader just lands nowhere.
+      - run: python3 scripts/check_links.py
 
   # Catches assumptions about the width of int. Token arithmetic and score
   # level indices are the realistic places for one to hide, and 32-bit targets

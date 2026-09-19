@@ -1,5 +1,12 @@
 # typesafe-go
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/nibir1/typesafe-go.svg)](https://pkg.go.dev/github.com/nibir1/typesafe-go)
+[![CI](https://github.com/nibir1/typesafe-go/actions/workflows/ci.yml/badge.svg)](https://github.com/nibir1/typesafe-go/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/nibir1/typesafe-go)](https://goreportcard.com/report/github.com/nibir1/typesafe-go)
+[![Go 1.23+](https://img.shields.io/badge/go-1.23%2B-00ADD8)](https://go.dev/dl/)
+[![Zero dependencies](https://img.shields.io/badge/dependencies-0-success)](#repository-layout)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
 A community-maintained Go SDK for the [TypeSafe](https://typesafe.ai) **System One** API
 and its model, **Jev**.
 
@@ -796,6 +803,12 @@ printf 'TYPESAFE_API_KEY=%s\n' "$YOUR_KEY" > .env.local && chmod 600 .env.local
 | [docs/LINTING.md](docs/LINTING.md) | The three analyzers, their rules, and CI wiring |
 | [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) | Tracing, metrics, caching, and the demo stack |
 | [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) | HTTP frameworks, LangChainGo, Temporal, MCP |
+| [docs/DECISION_GUIDE.md](docs/DECISION_GUIDE.md) | Which primitive to use, and how to word the question |
+| [docs/LIMITS.md](docs/LIMITS.md) | Context budget, rate limits, jaggedness, cost |
+| [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | Measured overhead and the methodology |
+| [docs/MIGRATION.md](docs/MIGRATION.md) | Coming from the Python or JavaScript SDK |
+| [docs/FAQ.md](docs/FAQ.md) | Short answers |
+| [examples/](examples) | Ten runnable programs, each replayed in CI |
 | [docs/Dev_Roadmap.md](docs/Dev_Roadmap.md) | Phase plan, competitive audit, design corrections |
 | [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) | Attribution register |
 
@@ -803,6 +816,43 @@ printf 'TYPESAFE_API_KEY=%s\n' "$YOUR_KEY" > .env.local && chmod 600 .env.local
 the official documentation states are contradicted by the live API, including the Score
 minimum, the Score maximum, the `400` status, the shape of `detail`, and the format of
 `release_date`.
+
+---
+
+## How this compares
+
+Six Go clients for this API were **downloaded and read** on 2026-09-18, not judged by
+their READMEs. The result is worth stating plainly: the client layer is solved, six
+times over, by people who read the same documentation.
+
+| | The Go field (6 SDKs) | This SDK |
+|---|---|---|
+| `NoulAnswer` correctly has no `Confidence` | 6/6 | ✓ |
+| `instructions` typed as a union, not `string` | 6/6 | ✓ |
+| `422` handled as the validation error | 6/6 | ✓ |
+| `retry-after` honoured | 6/6 | ✓ |
+| Retry defaults matching the official SDK | 6/6 | ✓ |
+| Zero third-party dependencies | 6/6 | ✓ |
+| `529` handled | 5/6 | ✓ |
+| Ordered `Score` accessors (numeric key sort) | 3/6 | ✓ |
+| Record/replay cassettes | 1/6 partial | ✓ |
+| **Context-budget awareness (64k / 32k)** | **0/6** | ✓ |
+| **Composition layer (`decision`)** | **0/6** | ✓ |
+| **Mock client and test server** | **0/6** | ✓ |
+| **Static analyzers** | **0/6** | ✓ |
+| **Batch API** | **0/6** | ✓ |
+
+Everything in the top half is table stakes, and this SDK pays it. Everything in the
+bottom half is what it is actually for.
+
+Two of the six — `Tangerg/typesafe-sdk-go` and `zhirschtritt/typesafe-go` — are
+genuinely well built, and two of them cap `retry-after` at a maximum, which is the
+sophisticated behaviour. This is not a weak field.
+
+**Against the official Python and JavaScript SDKs**, no comparison table is offered
+here. Their defaults and features are theirs to document, a table would go stale, and
+you are better served by reading them. What is verified — the retry defaults, which
+this SDK matches deliberately — is in [MIGRATION.md](docs/MIGRATION.md).
 
 ---
 
@@ -830,8 +880,10 @@ Built and verified:
   response cache keyed on the resolved model id
 - **Phase 14** — **integrations**: four HTTP middlewares, LangChainGo, Temporal, and an
   MCP server with `evaluate_policy`
+- **Phase 15** — **docs and DX**: ten runnable examples replayed in CI, benchmarks with
+  a regression gate, and the guides above
 
-Next: docs and developer experience, then release engineering. Full plan in
+Next: release engineering and `v1.0.0`. Full plan in
 [docs/Dev_Roadmap.md](docs/Dev_Roadmap.md).
 
 ---
