@@ -5,8 +5,10 @@ module github.com/nibir1/typesafe-go/typesafeprom
 
 go 1.25.0
 
+replace github.com/nibir1/typesafe-go => ../
+
 require (
-	github.com/nibir1/typesafe-go v1.0.0
+	github.com/nibir1/typesafe-go v0.0.0
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/client_model v0.6.2
 )

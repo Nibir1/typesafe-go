@@ -11,7 +11,9 @@ module github.com/nibir1/typesafe-go/integrations/mcp
 
 go 1.25.0
 
-require github.com/nibir1/typesafe-go v1.0.0
+replace github.com/nibir1/typesafe-go => ../../
+
+require github.com/nibir1/typesafe-go v0.0.0
 
 require (
 	github.com/google/jsonschema-go v0.4.3 // indirect
