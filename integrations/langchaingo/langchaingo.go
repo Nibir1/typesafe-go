@@ -26,7 +26,7 @@
 // tools.Tool declares Call(ctx, string) (string, error) and chains.Chain
 // declares Call(ctx, map, ...opt) (map, error). Same name, different
 // signatures, so no single Go type can satisfy both. Classifier is the tool;
-// Chain is the chain. They share their configuration and their behaviour, and
+// Chain is the chain. They share their configuration and their behavior, and
 // differ only in how they are called.
 package langchaingo
 
@@ -37,11 +37,12 @@ import (
 	"sort"
 	"strings"
 
-	typesafe "github.com/nibir1/typesafe-go"
 	"github.com/tmc/langchaingo/chains"
 	"github.com/tmc/langchaingo/memory"
 	"github.com/tmc/langchaingo/schema"
 	"github.com/tmc/langchaingo/tools"
+
+	typesafe "github.com/nibir1/typesafe-go"
 )
 
 // Defaults for the chain's input and output keys.

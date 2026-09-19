@@ -23,7 +23,7 @@
 //
 // # A note on token metrics
 //
-// Only input tokens are billed. typesafe_tokens_total is labelled by kind so a
+// Only input tokens are billed. typesafe_tokens_total is labeled by kind so a
 // cost panel can sum the input series alone; summing both would overstate
 // spend by whatever fraction the output happens to be.
 package typesafeprom
@@ -35,8 +35,9 @@ import (
 	"sort"
 	"time"
 
-	typesafe "github.com/nibir1/typesafe-go"
 	"github.com/prometheus/client_golang/prometheus"
+
+	typesafe "github.com/nibir1/typesafe-go"
 )
 
 // Namespace prefixes every metric.
@@ -245,7 +246,7 @@ func (m *Metrics) Interceptor() typesafe.Interceptor {
 			elapsed := time.Since(start).Seconds()
 
 			// The model label comes from the *response*, because that is the
-			// model that actually answered. Labelling by the requested alias
+			// model that actually answered. Labeling by the requested alias
 			// would put two model versions in one series across an alias move
 			// and hide the step change that caused.
 			model := "unknown"
@@ -356,7 +357,7 @@ func (m *Metrics) idLabel(id string) string {
 	return ""
 }
 
-// typeFromJSON reads the wire discriminator out of a marshalled question.
+// typeFromJSON reads the wire discriminator out of a marshaled question.
 func typeFromJSON(b []byte) string {
 	var probe struct {
 		Type string `json:"type"`

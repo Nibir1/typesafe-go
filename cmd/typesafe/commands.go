@@ -342,7 +342,7 @@ func cmdVersion(ctx context.Context, args []string) int {
 		return code
 	}
 
-	fmt.Printf("typesafe %s\n", typesafe.Version)
+	fmt.Printf("typesafe %s\n", typesafe.VersionString())
 
 	info, ok := debug.ReadBuildInfo()
 	if !ok {

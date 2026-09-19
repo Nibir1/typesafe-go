@@ -86,7 +86,7 @@ func zshCompletion() string {
 	for _, c := range commands() {
 		// Escape the colon that separates a zsh completion's value from its
 		// description, so a summary containing one does not truncate it.
-		b.WriteString(fmt.Sprintf("    '%s:%s'\n", c.name, strings.ReplaceAll(c.summary, ":", "\\:")))
+		fmt.Fprintf(&b, "    '%s:%s'\n", c.name, strings.ReplaceAll(c.summary, ":", "\\:"))
 	}
 	b.WriteString(`  )
 
@@ -115,8 +115,7 @@ func fishCompletion() string {
 	b.WriteString("# fish completion for typesafe\n")
 	b.WriteString("complete -c typesafe -f\n")
 	for _, c := range commands() {
-		b.WriteString(fmt.Sprintf(
-			"complete -c typesafe -n __fish_use_subcommand -a %s -d %q\n", c.name, c.summary))
+		fmt.Fprintf(&b, "complete -c typesafe -n __fish_use_subcommand -a %s -d %q\n", c.name, c.summary)
 	}
 	b.WriteString(`
 complete -c typesafe -s f -r -d 'request JSON file'

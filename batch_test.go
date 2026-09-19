@@ -377,7 +377,7 @@ func TestBatchBudgetAccountingIsExactUnderConcurrency(t *testing.T) {
 
 // --- cancellation ------------------------------------------------------------
 
-// Cancelling mid-batch must still fill every slot: a caller reading Items must
+// Canceling mid-batch must still fill every slot: a caller reading Items must
 // never find a zero value that reads as a success which never happened.
 func TestBatchCancellationFillsEverySlot(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -406,7 +406,7 @@ func TestBatchCancellationFillsEverySlot(t *testing.T) {
 		}
 	}
 	if result.Failed == 0 {
-		t.Error("cancelling mid-batch produced no failures")
+		t.Error("canceling mid-batch produced no failures")
 	}
 	if int(served.Load()) >= 300 {
 		t.Error("cancellation did not stop the batch")
@@ -511,11 +511,11 @@ func TestBatchSeqBreakStopsEverything(t *testing.T) {
 	}
 }
 
-// Cancelling the context terminates the stream, and every input still reports.
+// Canceling the context terminates the stream, and every input still reports.
 //
 // This is the contract SystemOneBatch already keeps, and the streaming view has
 // to keep it too: a consumer that is still ranging when the context is
-// cancelled must be able to tell "cancelled after three items" from "cancelled
+// canceled must be able to tell "canceled after three items" from "canceled
 // before anything started". Dropping the remaining sends makes those two
 // indistinguishable, and in the worst case yields nothing at all with no error
 // anywhere to say why.

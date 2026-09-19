@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+
 	typesafe "github.com/nibir1/typesafe-go"
 	tsfiber "github.com/nibir1/typesafe-go/integrations/fiber"
 )
@@ -57,7 +58,7 @@ func TestMiddlewareAndCorrelation(t *testing.T) {
 			t.Error("the handler received a different client")
 		}
 		// c.Context(), not context.Background(): Fiber's context is what
-		// carries the client and the correlation id, and what is cancelled
+		// carries the client and the correlation id, and what is canceled
 		// when the caller hangs up.
 		if _, err := ts.SystemOne(c.Context(), sample()); err != nil {
 			t.Errorf("SystemOne: %v", err)

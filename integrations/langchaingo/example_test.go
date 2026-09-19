@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/tmc/langchaingo/tools"
+
 	typesafe "github.com/nibir1/typesafe-go"
 	tslangchain "github.com/nibir1/typesafe-go/integrations/langchaingo"
-	"github.com/tmc/langchaingo/tools"
 )
 
 // Give an agent a classification tool whose answers cannot be a value nobody

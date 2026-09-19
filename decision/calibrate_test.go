@@ -79,7 +79,7 @@ func TestCalibrateRecoversKnownWeights(t *testing.T) {
 	if !(w["strong_signal"] > w["medium_signal"] && w["medium_signal"] > w["weak_signal"]) {
 		t.Errorf("fitted weights do not preserve the true ordering:\n%s", report)
 	}
-	// And the dominant signal should be recognisably dominant.
+	// And the dominant signal should be recognizably dominant.
 	if w["strong_signal"] < 0.4 {
 		t.Errorf("strong_signal fitted to %.3f, expected it to dominate:\n%s", w["strong_signal"], report)
 	}

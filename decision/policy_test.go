@@ -342,7 +342,8 @@ func TestPolicyQuestions(t *testing.T) {
 
 func TestVerdictOrdering(t *testing.T) {
 	// Verdicts must compare meaningfully: v >= Review is a sensible test.
-	if !(decision.Allow < decision.Warn && decision.Warn < decision.Review && decision.Review < decision.Block) {
+	if decision.Allow > decision.Warn || decision.Warn > decision.Review ||
+		decision.Review > decision.Block {
 		t.Error("verdicts are not ordered from permissive to restrictive")
 	}
 }

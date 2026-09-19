@@ -217,7 +217,7 @@ func (c *Client) systemOne(ctx context.Context, req *SystemOneRequest) (*SystemO
 
 	body, err := json.Marshal(wire)
 	if err != nil {
-		return nil, fmt.Errorf("%w: encoding request: %v", ErrInvalidRequest, err)
+		return nil, fmt.Errorf("%w: encoding request: %w", ErrInvalidRequest, err)
 	}
 
 	raw, requestID, err := c.do(ctx, http.MethodPost, SystemOnePath, body)
@@ -281,8 +281,8 @@ func (c *Client) Models(ctx context.Context) ([]ModelCard, error) {
 
 // do performs the operation, retrying per the client's policy.
 //
-// The request body is marshalled once by the caller and handed here as bytes,
-// so every attempt sends byte-identical content. Re-marshalling per attempt
+// The request body is marshaled once by the caller and handed here as bytes,
+// so every attempt sends byte-identical content. Re-marshaling per attempt
 // would risk drift — a map iterated in a different order is a different
 // request, and a server that deduplicates would not recognize the retry.
 func (c *Client) do(ctx context.Context, method, path string, body []byte) ([]byte, string, error) {
@@ -380,7 +380,7 @@ func (c *Client) do(ctx context.Context, method, path string, body []byte) ([]by
 		}
 
 		if err := c.clk.Sleep(ctx, delay); err != nil {
-			// Cancelled or out of budget mid-backoff. Report the API failure
+			// Canceled or out of budget mid-backoff. Report the API failure
 			// that caused the wait, not the timer: the caller wants to know
 			// why we were waiting, not that a timer was interrupted.
 			return nil, "", c.exhausted(made, started, lastErr)
@@ -418,7 +418,7 @@ func (c *Client) attempt(ctx context.Context, method, path string, body []byte) 
 	}
 	httpReq, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, reader)
 	if err != nil {
-		return nil, "", fmt.Errorf("%w: building request: %v", ErrInvalidConfig, err)
+		return nil, "", fmt.Errorf("%w: building request: %w", ErrInvalidConfig, err)
 	}
 
 	for k, vs := range c.headers {

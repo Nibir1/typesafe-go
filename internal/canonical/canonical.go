@@ -6,7 +6,7 @@
 // semantically identical requests produce identical bytes.
 //
 // The problem is Go map iteration order, which is deliberately randomized.
-// Marshalling map[string]any twice can yield different key orders, so hashing
+// Marshaling map[string]any twice can yield different key orders, so hashing
 // json.Marshal output directly gives a different key for the same request on
 // every run. encoding/json does sort map keys, but only for map types — a
 // struct marshals in field-declaration order, and json.RawMessage passes
@@ -23,7 +23,7 @@
 // Numbers are preserved as written. 1 and 1.0 are semantically equal JSON but
 // canonicalize differently, because they are different bytes on the wire and
 // this package's job is byte determinism, not semantic equivalence. In
-// practice a request marshalled by this SDK is consistent with itself, which
+// practice a request marshaled by this SDK is consistent with itself, which
 // is what the matcher needs.
 package canonical
 

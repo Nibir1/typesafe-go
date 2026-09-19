@@ -1,0 +1,105 @@
+# Dependency updates for every module in the repository.
+#
+# The core has no dependencies at all, so its entry exists to catch the day
+# that stops being true: a PR proposing one is the loudest possible signal that
+# something crossed the line `make deps-graph` guards.
+#
+# Every other module is listed explicitly. Dependabot does not discover nested
+# go.mod files on its own, and a submodule nobody updates is the one that ends
+# up shipping a known vulnerability — which is exactly what happened to the gin
+# integration before this file existed.
+version: 2
+
+updates:
+  # --- GitHub Actions ---------------------------------------------------------
+  # Actions are pinned by commit SHA. Dependabot understands that pin and
+  # updates both the SHA and the version comment beside it.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # --- the core ---------------------------------------------------------------
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "deps(core)"
+    # Nothing should ever appear here. If it does, read it carefully.
+
+  # --- optional modules -------------------------------------------------------
+  - package-ecosystem: gomod
+    directory: /lint
+    schedule: { interval: weekly }
+    commit-message: { prefix: "deps(lint)" }
+
+  - package-ecosystem: gomod
+    directory: /typesafecache
+    schedule: { interval: weekly }
+    commit-message: { prefix: "deps(cache)" }
+
+  - package-ecosystem: gomod
+    directory: /typesafeotel
+    schedule: { interval: weekly }
+    commit-message: { prefix: "deps(otel)" }
+
+  - package-ecosystem: gomod
+    directory: /typesafeprom
+    schedule: { interval: weekly }
+    commit-message: { prefix: "deps(prom)" }
+
+  # --- integrations -----------------------------------------------------------
+  - package-ecosystem: gomod
+    directory: /integrations/nethttp
+    schedule: { interval: weekly }
+    commit-message: { prefix: "deps(nethttp)" }
+
+  - package-ecosystem: gomod
+    directory: /integrations/gin
+    schedule: { interval: weekly }
+    commit-message: { prefix: "deps(gin)" }
+
+  - package-ecosystem: gomod
+    directory: /integrations/echo
+    schedule: { interval: weekly }
+    commit-message: { prefix: "deps(echo)" }
+
+  - package-ecosystem: gomod
+    directory: /integrations/fiber
+    schedule: { interval: weekly }
+    commit-message: { prefix: "deps(fiber)" }
+
+  - package-ecosystem: gomod
+    directory: /integrations/langchaingo
+    schedule: { interval: weekly }
+    commit-message: { prefix: "deps(langchaingo)" }
+
+  - package-ecosystem: gomod
+    directory: /integrations/temporal
+    schedule: { interval: weekly }
+    commit-message: { prefix: "deps(temporal)" }
+
+  - package-ecosystem: gomod
+    directory: /integrations/mcp
+    schedule: { interval: weekly }
+    commit-message: { prefix: "deps(mcp)" }
+
+  # --- examples and the demo stack --------------------------------------------
+  - package-ecosystem: gomod
+    directory: /examples
+    schedule: { interval: monthly }
+    commit-message: { prefix: "deps(examples)" }
+
+  - package-ecosystem: gomod
+    directory: /deploy/example
+    schedule: { interval: monthly }
+    commit-message: { prefix: "deps(deploy)" }
+
+  - package-ecosystem: docker
+    directory: /deploy/example
+    schedule: { interval: monthly }
+    commit-message: { prefix: "deps(deploy)" }

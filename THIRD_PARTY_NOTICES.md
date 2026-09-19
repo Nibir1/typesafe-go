@@ -5,26 +5,58 @@ third-party code incorporated into it, and of the licenses that code carries.
 
 **Current status: no third-party code has been incorporated.** The candidate projects
 in §3 are recorded so the attribution process exists before any reused code lands, not
-after.
+after. No register entry exists because nothing has been taken; when something is, it
+names the upstream commit it came from.
 
 ### Dependencies, by module
 
-| Module | Third-party dependencies |
+| Module | Direct third-party dependencies |
 |---|---|
-| `github.com/nibir1/typesafe-go` (core, including the CLI) | **none** |
-| `github.com/nibir1/typesafe-go/lint` (the analyzers) | `golang.org/x/tools` and its tree |
+| `github.com/nibir1/typesafe-go` (core, CLI, `typesafe-gen`) | **none** |
+| `.../typesafecache` | **none** |
+| `.../integrations/nethttp` | **none** |
+| `.../examples` | **none** |
+| `.../lint` (the analyzers) | `golang.org/x/tools` |
+| `.../typesafeotel` | `go.opentelemetry.io/otel`, `/sdk`, `/trace` |
+| `.../typesafeprom` | `github.com/prometheus/client_golang`, `client_model` |
+| `.../integrations/gin` | `github.com/gin-gonic/gin` |
+| `.../integrations/echo` | `github.com/labstack/echo/v4` |
+| `.../integrations/fiber` | `github.com/gofiber/fiber/v3` |
+| `.../integrations/langchaingo` | `github.com/tmc/langchaingo` |
+| `.../integrations/temporal` | `go.temporal.io/sdk`, `github.com/stretchr/testify` |
+| `.../integrations/mcp` | `github.com/modelcontextprotocol/go-sdk` |
+| `deploy/example` (not published) | otel exporters, `client_golang` |
 
-The core module's guarantee is checked by `make deps`, which fails the build if its
-dependency graph is ever non-empty. That includes `cmd/typesafe`: the CLI uses stdlib
-`flag` rather than a framework, so the binary has no dependencies either.
+The core module's guarantee is checked three ways, because they fail
+differently: `make deps` and `make deps-graph` catch a new `require`, and a
+`depguard` lint rule catches an import added before anyone runs `go mod tidy`.
+That includes `cmd/typesafe` and `cmd/typesafe-gen` — the CLI uses stdlib
+`flag` rather than a framework, and the generator uses `go/parser` rather than
+`golang.org/x/tools`, so neither binary has a dependency either.
 
-The analyzers are a separate module precisely so they can depend on
-`golang.org/x/tools` — `go/analysis` lives there, and there is no way to write a Go
-analyzer without it. Splitting is what keeps the core's guarantee true: importing
-`github.com/nibir1/typesafe-go` pulls in nothing.
+Every other module is separate **so that it can** depend on something. Importing
+`github.com/nibir1/typesafe-go` pulls in none of them.
 
-These are **dependencies**, not incorporated code. Nothing in §3 has been copied,
-adapted, or translated into this repository.
+### Licence audit
+
+`make licenses` reads the licence of every third-party module the build
+actually compiles — from `go list -deps`, not `go list -m all`, which includes
+modules nothing touches — and fails on anything that would constrain
+Apache-2.0 redistribution.
+
+As of 2026-09-19, across every optional module: **100 third-party modules, all
+permissive.** Apache-2.0, MIT, BSD-2/3-Clause and ISC. No GPL, LGPL, AGPL, MPL
+or EPL anywhere in the graph.
+
+One module ships no licence file and is allowed with its evidence recorded in
+`scripts/check_licenses.py`:
+
+| Module | Why |
+|---|---|
+| `github.com/nexus-rpc/nexus-proto-annotations` | MIT. The Go module is rooted at the repository's `go/` subdirectory while the `LICENSE` sits at the repository root, so the module zip omits it. Verified against GitHub's licence API on 2026-09-19 (`spdx_id: MIT`). Reached only transitively, through `go.temporal.io/sdk`. |
+
+These are **dependencies**, not incorporated code. Nothing in §3 has been
+copied, adapted, or translated into this repository.
 
 ---
 

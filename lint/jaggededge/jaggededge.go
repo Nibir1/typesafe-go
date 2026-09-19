@@ -111,7 +111,7 @@ var rules = []rule{
 	{
 		section: "Generation",
 		phrases: []string{
-			"write a", "generate a", "summarize", "summarise", "rewrite",
+			"write a", "generate a", "summarize", "summarize", "rewrite",
 			"paraphrase", "translate", "compose a", "draft a", "explain why",
 			"describe the", "list the",
 		},

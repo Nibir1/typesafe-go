@@ -258,8 +258,12 @@ func (c *Cache) Interceptor() typesafe.Interceptor {
 			moved := c.learnAlias(alias, resp.Model)
 			storeKey, err := c.keyForModel(resp.Model, req)
 			if err != nil {
+				// The call succeeded; only the storing failed. Returning the
+				// error here would fail a request that worked, which is the
+				// one thing a cache must never do — a broken cache degrades
+				// to no cache, not to an outage.
 				c.report(Event{Alias: alias, Model: resp.Model, AliasMoved: moved, Err: err})
-				return resp, nil
+				return resp, nil //nolint:nilerr // deliberate: see above.
 			}
 			c.put(storeKey, resp)
 			c.report(Event{Key: storeKey, Alias: alias, Model: resp.Model, AliasMoved: moved})

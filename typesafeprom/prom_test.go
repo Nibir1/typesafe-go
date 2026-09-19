@@ -10,10 +10,11 @@ import (
 	"testing"
 	"time"
 
-	typesafe "github.com/nibir1/typesafe-go"
-	"github.com/nibir1/typesafe-go/typesafeprom"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
+
+	typesafe "github.com/nibir1/typesafe-go"
+	"github.com/nibir1/typesafe-go/typesafeprom"
 )
 
 // --- harness -----------------------------------------------------------------
@@ -64,8 +65,8 @@ func families(t *testing.T, m *typesafeprom.Metrics) map[string]*dto.MetricFamil
 	return out
 }
 
-// labelled finds the metric carrying every given label pair.
-func labelled(f *dto.MetricFamily, want map[string]string) *dto.Metric {
+// labeled finds the metric carrying every given label pair.
+func labeled(f *dto.MetricFamily, want map[string]string) *dto.Metric {
 	if f == nil {
 		return nil
 	}
@@ -162,7 +163,7 @@ func TestDurationBucketsCoverTheDocumentedRange(t *testing.T) {
 	}
 
 	f := families(t, m)["typesafe_request_duration_seconds"]
-	metric := labelled(f, map[string]string{"model": "jev-1.13.0", "outcome": "ok"})
+	metric := labeled(f, map[string]string{"model": "jev-1.13.0", "outcome": "ok"})
 	if metric == nil {
 		t.Fatal("no duration observation for a successful call")
 	}
@@ -200,9 +201,9 @@ func TestSuccessfulCallRecordsUsageQuestionsAndConfidence(t *testing.T) {
 	}
 	fams := families(t, m)
 
-	// Tokens are labelled by kind, so a cost panel can sum input alone.
-	in := labelled(fams["typesafe_tokens_total"], map[string]string{"kind": "input", "model": "jev-1.13.0"})
-	out := labelled(fams["typesafe_tokens_total"], map[string]string{"kind": "output", "model": "jev-1.13.0"})
+	// Tokens are labeled by kind, so a cost panel can sum input alone.
+	in := labeled(fams["typesafe_tokens_total"], map[string]string{"kind": "input", "model": "jev-1.13.0"})
+	out := labeled(fams["typesafe_tokens_total"], map[string]string{"kind": "output", "model": "jev-1.13.0"})
 	if in == nil || in.GetCounter().GetValue() != 312 {
 		t.Errorf("input tokens = %v, want 312", in.GetCounter().GetValue())
 	}
@@ -211,8 +212,8 @@ func TestSuccessfulCallRecordsUsageQuestionsAndConfidence(t *testing.T) {
 	}
 
 	// Questions counted by primitive.
-	noul := labelled(fams["typesafe_questions_total"], map[string]string{"type": "noul"})
-	choice := labelled(fams["typesafe_questions_total"], map[string]string{"type": "choice"})
+	noul := labeled(fams["typesafe_questions_total"], map[string]string{"type": "noul"})
+	choice := labeled(fams["typesafe_questions_total"], map[string]string{"type": "choice"})
 	if noul == nil || noul.GetCounter().GetValue() != 1 {
 		t.Error("noul question not counted")
 	}
@@ -221,7 +222,7 @@ func TestSuccessfulCallRecordsUsageQuestionsAndConfidence(t *testing.T) {
 	}
 
 	// Confidence: a Choice contributes its confidence, a Noul its probability.
-	conf := labelled(fams["typesafe_answer_confidence"], map[string]string{
+	conf := labeled(fams["typesafe_answer_confidence"], map[string]string{
 		"question_type": "choice", "question_id": "team",
 	})
 	if conf == nil {
@@ -230,7 +231,7 @@ func TestSuccessfulCallRecordsUsageQuestionsAndConfidence(t *testing.T) {
 	if got := conf.GetHistogram().GetSampleSum(); got != 0.81 {
 		t.Errorf("choice confidence sum = %v, want 0.81", got)
 	}
-	noulConf := labelled(fams["typesafe_answer_confidence"], map[string]string{
+	noulConf := labeled(fams["typesafe_answer_confidence"], map[string]string{
 		"question_type": "noul", "question_id": "is_urgent",
 	})
 	if noulConf == nil {
@@ -257,11 +258,11 @@ func TestModelLabelComesFromTheResponse(t *testing.T) {
 	}
 
 	f := families(t, m)["typesafe_request_duration_seconds"]
-	if labelled(f, map[string]string{"model": "jev-1.13.0"}) == nil {
-		t.Error("the duration series is not labelled with the resolved model")
+	if labeled(f, map[string]string{"model": "jev-1.13.0"}) == nil {
+		t.Error("the duration series is not labeled with the resolved model")
 	}
-	if labelled(f, map[string]string{"model": "jev-latest"}) != nil {
-		t.Error("the duration series is labelled with the requested alias")
+	if labeled(f, map[string]string{"model": "jev-latest"}) != nil {
+		t.Error("the duration series is labeled with the requested alias")
 	}
 }
 
@@ -289,7 +290,7 @@ func TestRetriesAreCountedByStatus(t *testing.T) {
 		t.Fatalf("SystemOne: %v", err)
 	}
 
-	got := labelled(families(t, m)["typesafe_retries_total"], map[string]string{"status": "429"})
+	got := labeled(families(t, m)["typesafe_retries_total"], map[string]string{"status": "429"})
 	if got == nil || got.GetCounter().GetValue() != 2 {
 		t.Errorf("429 retries = %v, want 2", got.GetCounter().GetValue())
 	}
@@ -345,14 +346,14 @@ func TestFailedCallIsCountedAndNotCountedAsUsage(t *testing.T) {
 	}
 	fams := families(t, m)
 
-	got := labelled(fams["typesafe_errors_total"], map[string]string{"class": "authentication"})
+	got := labeled(fams["typesafe_errors_total"], map[string]string{"class": "authentication"})
 	if got == nil || got.GetCounter().GetValue() != 1 {
 		t.Error("the authentication failure was not counted")
 	}
-	if labelled(fams["typesafe_tokens_total"], map[string]string{"kind": "input"}) != nil {
+	if labeled(fams["typesafe_tokens_total"], map[string]string{"kind": "input"}) != nil {
 		t.Error("a failed call must not contribute usage")
 	}
-	if labelled(fams["typesafe_request_duration_seconds"], map[string]string{"outcome": "error"}) == nil {
+	if labeled(fams["typesafe_request_duration_seconds"], map[string]string{"outcome": "error"}) == nil {
 		t.Error("a failed call must still contribute a duration observation")
 	}
 }
@@ -369,8 +370,8 @@ func TestBatchOutcomesAreCounted(t *testing.T) {
 		cb(typesafe.ItemResult{Index: i, Err: errors.New("boom")})
 	}
 	fams := families(t, m)
-	ok := labelled(fams["typesafe_batch_items_total"], map[string]string{"outcome": "ok"})
-	bad := labelled(fams["typesafe_batch_items_total"], map[string]string{"outcome": "error"})
+	ok := labeled(fams["typesafe_batch_items_total"], map[string]string{"outcome": "ok"})
+	bad := labeled(fams["typesafe_batch_items_total"], map[string]string{"outcome": "error"})
 	if ok == nil || ok.GetCounter().GetValue() != 7 {
 		t.Errorf("ok items = %v, want 7", ok.GetCounter().GetValue())
 	}
@@ -396,7 +397,7 @@ func TestCacheEventsAreCounted(t *testing.T) {
 		"alias_moved": 1,
 		"error":       1,
 	} {
-		got := labelled(fams["typesafe_cache_events_total"], map[string]string{"result": label})
+		got := labeled(fams["typesafe_cache_events_total"], map[string]string{"result": label})
 		if got == nil || got.GetCounter().GetValue() != want {
 			t.Errorf("cache result %q = %v, want %v", label, got.GetCounter().GetValue(), want)
 		}
@@ -427,7 +428,7 @@ func TestQuestionIDLabelCanBeTurnedOff(t *testing.T) {
 		}
 	}
 	// The observations are still recorded, just not broken out by id.
-	if labelled(f, map[string]string{"question_type": "choice"}) == nil {
+	if labeled(f, map[string]string{"question_type": "choice"}) == nil {
 		t.Error("confidence observations were lost along with the label")
 	}
 }
@@ -469,7 +470,7 @@ func TestCustomBuckets(t *testing.T) {
 	}
 
 	f := families(t, m)["typesafe_request_duration_seconds"]
-	metric := labelled(f, map[string]string{"outcome": "ok"})
+	metric := labeled(f, map[string]string{"outcome": "ok"})
 	if metric == nil {
 		t.Fatal("no observation")
 	}
@@ -485,7 +486,7 @@ func TestCustomBuckets(t *testing.T) {
 		t.Fatalf("SystemOne: %v", err)
 	}
 	f2 := families(t, m2)["typesafe_request_duration_seconds"]
-	metric2 := labelled(f2, map[string]string{"outcome": "ok"})
+	metric2 := labeled(f2, map[string]string{"outcome": "ok"})
 	if n := len(metric2.GetHistogram().GetBucket()); n != len(typesafeprom.DefaultDurationBuckets) {
 		t.Errorf("%d buckets after a nil override, want the defaults", n)
 	}

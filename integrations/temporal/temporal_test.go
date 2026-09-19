@@ -9,12 +9,13 @@ import (
 	"testing"
 	"time"
 
-	typesafe "github.com/nibir1/typesafe-go"
-	tstemporal "github.com/nibir1/typesafe-go/integrations/temporal"
 	"github.com/stretchr/testify/mock"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 	"go.temporal.io/sdk/workflow"
+
+	typesafe "github.com/nibir1/typesafe-go"
+	tstemporal "github.com/nibir1/typesafe-go/integrations/temporal"
 )
 
 // --- harness -----------------------------------------------------------------

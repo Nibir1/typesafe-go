@@ -54,7 +54,7 @@ func WithBaseURL(raw string) Option {
 	return func(c *config) error {
 		u, err := url.Parse(raw)
 		if err != nil {
-			return fmt.Errorf("%w: base URL %q: %v", ErrInvalidConfig, raw, err)
+			return fmt.Errorf("%w: base URL %q: %w", ErrInvalidConfig, raw, err)
 		}
 		if u.Scheme != "http" && u.Scheme != "https" {
 			return fmt.Errorf("%w: base URL %q must be http or https", ErrInvalidConfig, raw)

@@ -27,8 +27,35 @@
 // separate modules so that importing this one costs nothing.
 package typesafe
 
+import "runtime/debug"
+
 // Version is the SDK version, reported in the User-Agent header.
-const Version = "0.0.0-dev"
+//
+// A var rather than a const so a release build can stamp it with
+// -ldflags "-X github.com/nibir1/typesafe-go.Version=v1.0.0". The linker's -X
+// flag only writes to variables; as a const this was unsettable, and a
+// released binary would have reported 0.0.0-dev forever.
+//
+// A module installed with `go install ...@v1.0.0` gets its real version from
+// the build info instead, which is why this is a fallback rather than the
+// source of truth. See VersionString.
+var Version = "0.0.0-dev"
+
+// VersionString returns the version this binary or module was built as.
+//
+// Prefers the version the Go toolchain recorded — which `go install
+// module@version` sets automatically and correctly — and falls back to
+// Version, which a release build stamps with -ldflags. Preferring build info
+// means a user who installed with `go install` sees the version they asked
+// for, not whatever the last person to edit this file typed.
+func VersionString() string {
+	if info, ok := debug.ReadBuildInfo(); ok {
+		if v := info.Main.Version; v != "" && v != "(devel)" {
+			return v
+		}
+	}
+	return Version
+}
 
 // Wire constants, fixed by the published contract. See docs/WIRE_CONTRACT.md.
 const (

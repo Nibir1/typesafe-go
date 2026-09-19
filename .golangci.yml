@@ -1,0 +1,141 @@
+# golangci-lint v2 configuration.
+#
+# Curated rather than maximal. A linter set that fires on every file teaches
+# people to add //nolint, and a codebase full of suppressions is worse than one
+# with fewer checks — the suppressions hide the findings that mattered.
+#
+# Everything enabled here has caught a real defect in Go code, and the
+# exclusions below say why each one is off where it is off.
+version: "2"
+
+run:
+  timeout: 5m
+  # Both build tags, so integration-only code is linted too. Code that only
+  # compiles under a tag is code nobody reads.
+  build-tags:
+    - integration
+
+linters:
+  default: none
+  enable:
+    # The defaults, all of which earn their place.
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+    # Correctness. No SQL linters: this library touches no database, and a
+    # linter that can never fire is a linter nobody maintains.
+    - bodyclose       # a leaked response body leaks a connection
+    - contextcheck    # a dropped context breaks cancellation silently
+    - errorlint       # %v on an error breaks errors.Is for the next reader
+    - nilerr          # returning nil after checking err != nil
+
+    # Concurrency.
+    - noctx           # an HTTP request with no context cannot be cancelled
+
+    # Clarity.
+    - misspell
+    - unconvert
+    - wastedassign
+
+    # Supply chain: nothing may import a package the core must not depend on.
+    - depguard
+
+  settings:
+    errcheck:
+      # An ignored error from these is a deliberate choice, and writing
+      # `_ = w.Write(...)` everywhere adds noise without adding safety.
+      exclude-functions:
+        - (io.Writer).Write
+        - (*bytes.Buffer).Write
+        - (*strings.Builder).Write
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - fmt.Fprint
+
+    errorlint:
+      # %w is required for wrapping; %v on an error is what breaks errors.Is.
+      errorf: true
+      asserts: true
+      comparison: true
+
+    govet:
+      enable-all: true
+      disable:
+        # fieldalignment optimizes struct layout at the cost of grouping fields
+        # by meaning. Readability wins in a library people read.
+        - fieldalignment
+        # shadow fires on the idiomatic `if err := f(); err != nil` pattern.
+        - shadow
+
+    staticcheck:
+      checks:
+        - all
+        # ST1000 wants a package comment in a specific form; check_docs.py
+        # already enforces that every package has one.
+        - -ST1000
+
+    depguard:
+      rules:
+        core:
+          # The zero-dependency guarantee, enforced at lint time as well as by
+          # `make deps-graph`. Two checks because they fail differently: the
+          # graph check catches a new require, this catches an import added
+          # before anyone runs go mod tidy.
+          files:
+            - "!**/lint/**"
+            - "!**/typesafecache/**"
+            - "!**/typesafeotel/**"
+            - "!**/typesafeprom/**"
+            - "!**/integrations/**"
+            - "!**/examples/**"
+            - "!**/deploy/**"
+          allow:
+            - $gostd
+            - github.com/nibir1/typesafe-go
+          deny:
+            - pkg: golang.org/x/
+              desc: >-
+                The core module has no third-party dependencies, including
+                golang.org/x. Put it in a submodule.
+
+    misspell:
+      # US, which is what the Go standard library and this codebase use. An
+      # earlier version of this file said UK and produced 50 findings against
+      # correct spelling — a linter that is wrong 50 times is a linter people
+      # turn off.
+      locale: US
+
+  exclusions:
+    generated: lax
+    rules:
+      # Test files may ignore errors that production code may not: a test that
+      # checks every Write is a test nobody reads.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - noctx
+          - bodyclose
+
+      # Generated files are the generator's business, and the generator is
+      # tested separately.
+      - path: _typesafe\.go
+        linters:
+          - all
+
+      # The examples are written to be read and copied. Handling every error
+      # from a tabwriter would obscure the thing being demonstrated.
+      - path: examples/
+        linters:
+          - errcheck
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+      goimports:
+        local-prefixes:
+          - github.com/nibir1/typesafe-go

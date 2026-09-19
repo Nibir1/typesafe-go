@@ -59,10 +59,11 @@ import (
 	"fmt"
 	"time"
 
-	typesafe "github.com/nibir1/typesafe-go"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
+
+	typesafe "github.com/nibir1/typesafe-go"
 )
 
 // Activity names, as registered. Exported so a workflow can refer to one by
@@ -124,7 +125,7 @@ func toRaw(q typesafe.Question) (typesafe.RawQuestion, error) {
 	}
 	b, err := json.Marshal(q)
 	if err != nil {
-		return nil, fmt.Errorf("marshalling: %w", err)
+		return nil, fmt.Errorf("marshaling: %w", err)
 	}
 	var out typesafe.RawQuestion
 	if err := json.Unmarshal(b, &out); err != nil {

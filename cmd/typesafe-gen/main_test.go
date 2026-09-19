@@ -143,7 +143,7 @@ type Q struct {
 	if iNone < 0 || iSome < 0 || iBad < 0 {
 		t.Fatalf("not all levels emitted:\n%s", got)
 	}
-	if !(iNone < iSome && iSome < iBad) {
+	if iNone > iSome || iSome > iBad {
 		t.Errorf("levels are out of rubric order:\n%s", got)
 	}
 	if !strings.Contains(got, "typesafe.TypedScoreQuestion[Sev]") {

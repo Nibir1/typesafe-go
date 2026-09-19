@@ -3,6 +3,7 @@ package decision_test
 import (
 	"encoding/json"
 	"fmt"
+	"runtime"
 	"testing"
 
 	typesafe "github.com/nibir1/typesafe-go"
@@ -59,6 +60,11 @@ func BenchmarkReadProbabilities(b *testing.B) {
 			names := ids(n)
 			b.ReportAllocs()
 			b.ResetTimer()
+			// sink defeats dead-store elimination. Without it the appended
+			// slice is never read, the compiler is free to drop the work, and
+			// the benchmark reports the cost of an empty loop. staticcheck
+			// flagged exactly that (SA4010) in the first version of this file.
+			var sink float64
 			for i := 0; i < b.N; i++ {
 				out := make([]float64, 0, len(names))
 				for _, id := range names {
@@ -68,7 +74,9 @@ func BenchmarkReadProbabilities(b *testing.B) {
 					}
 					out = append(out, a.Noul)
 				}
+				sink += out[len(out)-1]
 			}
+			runtime.KeepAlive(sink)
 		})
 	}
 }

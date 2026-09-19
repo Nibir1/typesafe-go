@@ -50,7 +50,7 @@ help: ## Show this help
 # --- the gates ---------------------------------------------------------------
 
 .PHONY: verify
-verify: tidy-check fmt-check integrations-fmt vet vet-integration deps deps-graph test-race contract fixtures secrets docs-check links bench-check dashboards lint-module submodules integrations examples analyzers ## Full offline gate (run before pushing)
+verify: tidy-check fmt-check integrations-fmt vet vet-integration deps deps-graph test-race contract fixtures secrets docs-check links licenses bench-check dashboards lint-module submodules integrations examples analyzers ## Full offline gate (run before pushing)
 	@printf '\n$(OK)$(BOLD)  All offline checks passed.$(OFF)\n'
 	@printf '$(DIM)  `make live` additionally exercises the real API.$(OFF)\n\n'
 
@@ -180,6 +180,34 @@ bench-check: ## Run every benchmark once, to prove they still build
 	$(call step,benchmarks build)
 	@$(GO) test -run=NONE -bench=. -benchtime=1x ./... > /dev/null
 	$(call pass,benchmarks build and run)
+
+# --- release ------------------------------------------------------------------
+
+.PHONY: release-check
+release-check: ## Assert the tree can be released (VERSION=v1.2.3 to check a version)
+	$(call step,release readiness)
+	@python3 scripts/check_release_ready.py $(if $(VERSION),--version $(VERSION)) $(RELEASE_FLAGS)
+
+.PHONY: release-prep
+release-prep: ## Pin submodules to a published version: make release-prep VERSION=v1.2.3
+	$(call step,release prep)
+	@if [ -z "$(VERSION)" ]; then \
+	  printf '$(ERR)  ✗ usage: make release-prep VERSION=v1.2.3$(OFF)\n'; exit 2; \
+	fi
+	@python3 scripts/release_prep.py --version $(VERSION)
+
+.PHONY: release-revert
+release-revert: ## Restore development replaces after a release
+	$(call step,restoring development replaces)
+	@if [ -z "$(VERSION)" ]; then \
+	  printf '$(ERR)  ✗ usage: make release-revert VERSION=v1.2.3$(OFF)\n'; exit 2; \
+	fi
+	@python3 scripts/release_prep.py --version $(VERSION) --revert
+
+.PHONY: licenses
+licenses: ## Assert every third-party licence permits Apache-2.0 redistribution
+	$(call step,licence audit)
+	@python3 scripts/check_licenses.py
 
 .PHONY: links
 links: ## Assert every relative link in the docs resolves
@@ -374,6 +402,28 @@ secrets: ## Assert no credential reached any committed fixture or cassette
 	  printf '$(ERR)  ✗ %s is tracked by git$(OFF)\n' "$(ENVFILE)"; exit 1; \
 	fi
 	$(call pass,$(ENVFILE) is not tracked)
+
+.PHONY: vulncheck-all
+vulncheck-all: ## govulncheck across every module
+	$(call step,govulncheck, every module)
+	@if ! command -v govulncheck > /dev/null 2>&1; then \
+	  printf '$(WARN)  ! govulncheck not installed$(OFF)\n'; \
+	  printf '$(DIM)    go install golang.org/x/vuln/cmd/govulncheck@latest$(OFF)\n'; \
+	  exit 1; \
+	fi
+	@failed=0; \
+	for m in . $(SUBMODULES) lint $(INTEGRATIONS); do \
+	  out=$$(cd $$m && govulncheck ./... 2>&1); \
+	  if echo "$$out" | grep -q "Vulnerability #"; then \
+	    printf '$(ERR)  ✗ %s$(OFF)\n' "$$m"; \
+	    echo "$$out" | grep -A 4 "Vulnerability #"; \
+	    failed=1; \
+	  else \
+	    printf '$(DIM)    %s$(OFF)\n' "$$m"; \
+	  fi; \
+	done; \
+	if [ "$$failed" = 1 ]; then exit 1; fi
+	$(call pass,no known vulnerabilities in any module)
 
 .PHONY: vulncheck
 vulncheck: ## govulncheck, if installed

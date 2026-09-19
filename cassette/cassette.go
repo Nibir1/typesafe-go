@@ -2,7 +2,7 @@
 // offline, so that an integration test needs a live key exactly once.
 //
 // It works at the http.RoundTripper layer, which means the whole client is
-// exercised on replay: request marshalling, status mapping, the typed error
+// exercised on replay: request marshaling, status mapping, the typed error
 // hierarchy, response validation. A double that stubbed the SDK's own methods
 // would skip all of that and test considerably less.
 //
@@ -56,7 +56,7 @@ var ErrNotFound = errors.New("cassette: no recorded interaction matches this req
 type Interaction struct {
 	// Key is the match key: a SHA-256 over the method, path, and canonical
 	// request body. Requests hash to the same key regardless of JSON key
-	// order, so a re-marshalled identical request still matches.
+	// order, so a re-marshaled identical request still matches.
 	Key string `json:"key"`
 
 	Request  Request  `json:"request"`
@@ -110,7 +110,8 @@ func Load(path string) (*Cassette, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cassette: open %s: %w", path, err)
 	}
-	defer f.Close()
+	// Read-only: a Close error here says nothing the read did not already.
+	defer func() { _ = f.Close() }()
 
 	c := New(path)
 	sc := bufio.NewScanner(f)

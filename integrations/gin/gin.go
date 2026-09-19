@@ -23,6 +23,7 @@ package gin
 
 import (
 	"github.com/gin-gonic/gin"
+
 	typesafe "github.com/nibir1/typesafe-go"
 	"github.com/nibir1/typesafe-go/integrations/nethttp"
 )

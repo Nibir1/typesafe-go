@@ -15,6 +15,7 @@ package echo
 
 import (
 	"github.com/labstack/echo/v4"
+
 	typesafe "github.com/nibir1/typesafe-go"
 	"github.com/nibir1/typesafe-go/integrations/nethttp"
 )

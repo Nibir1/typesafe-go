@@ -36,10 +36,10 @@ type Result struct {
 // The channel is closed after the send, so a range over it terminates and a
 // second receive yields the zero Result rather than blocking.
 //
-// Cancelling ctx does not close the channel early — the in-flight request is
-// cancelled, and the resulting error arrives on the channel as a normal
+// Canceling ctx does not close the channel early — the in-flight request is
+// canceled, and the resulting error arrives on the channel as a normal
 // result. A caller waiting on the channel is therefore always woken exactly
-// once, whether the call succeeded, failed, or was cancelled.
+// once, whether the call succeeded, failed, or was canceled.
 func (c *Client) SystemOneAsync(ctx context.Context, req *SystemOneRequest) <-chan Result {
 	ch := make(chan Result, 1)
 	go func() {

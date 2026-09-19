@@ -81,7 +81,7 @@ type RetryPolicy struct {
 	RetryOnConnection bool
 
 	// RetryOnTimeout retries when an attempt exceeded the per-operation
-	// timeout. A caller's own cancelled context is never retried.
+	// timeout. A caller's own canceled context is never retried.
 	RetryOnTimeout bool
 
 	// Predicate, when set, overrides every rule above. Return true to retry.
@@ -198,7 +198,7 @@ func (p RetryPolicy) shouldRetry(err error) bool {
 	if err == nil {
 		return false
 	}
-	// A caller who cancelled is not asking us to try harder.
+	// A caller who canceled is not asking us to try harder.
 	if errors.Is(err, context.Canceled) {
 		return false
 	}

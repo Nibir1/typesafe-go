@@ -3,11 +3,12 @@ package temporal_test
 import (
 	"log"
 
-	typesafe "github.com/nibir1/typesafe-go"
-	tstemporal "github.com/nibir1/typesafe-go/integrations/temporal"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
+
+	typesafe "github.com/nibir1/typesafe-go"
+	tstemporal "github.com/nibir1/typesafe-go/integrations/temporal"
 )
 
 // TriageWorkflow shows the arrangement this package exists to enforce: the API

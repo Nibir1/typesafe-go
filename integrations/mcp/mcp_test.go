@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
+
 	typesafe "github.com/nibir1/typesafe-go"
 	"github.com/nibir1/typesafe-go/decision"
 	tsmcp "github.com/nibir1/typesafe-go/integrations/mcp"

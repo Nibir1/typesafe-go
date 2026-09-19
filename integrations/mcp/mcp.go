@@ -41,6 +41,7 @@ import (
 	"sync"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	typesafe "github.com/nibir1/typesafe-go"
 	"github.com/nibir1/typesafe-go/decision"
 )
@@ -78,7 +79,7 @@ type Options struct {
 // themselves, so both halves have to be registered together. The pairing is
 // what lets an agent evaluate a policy without knowing anything about it.
 type PolicySpec struct {
-	// Policy is the weights, thresholds and missing-answer behaviour.
+	// Policy is the weights, thresholds and missing-answer behavior.
 	Policy decision.Policy
 
 	// Questions are asked to produce the answers the policy weighs. Every
@@ -109,7 +110,7 @@ func NewServer(client *typesafe.Client, opts Options) *Server {
 		opts.Name = "typesafe"
 	}
 	if opts.Version == "" {
-		opts.Version = typesafe.Version
+		opts.Version = typesafe.VersionString()
 	}
 
 	s := &Server{
@@ -138,7 +139,7 @@ func NewServer(client *typesafe.Client, opts Options) *Server {
 // resources or middleware.
 func (s *Server) MCPServer() *mcp.Server { return s.srv }
 
-// Run serves over t until the context is cancelled.
+// Run serves over t until the context is canceled.
 func (s *Server) Run(ctx context.Context, t mcp.Transport) error {
 	return s.srv.Run(ctx, t)
 }

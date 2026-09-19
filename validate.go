@@ -83,7 +83,7 @@ func validateQuestion(id string, q Question) ([]Warning, error) {
 	// validate the question underneath it.
 	if v, ok := q.(selfValidator); ok {
 		if err := v.validateSelf(); err != nil {
-			return nil, fmt.Errorf("%w: question %q: %s", ErrInvalidRequest, id, err)
+			return nil, fmt.Errorf("%w: question %q: %w", ErrInvalidRequest, id, err)
 		}
 	}
 	if b, ok := q.(questionBuilder); ok {

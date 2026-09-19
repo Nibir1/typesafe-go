@@ -45,11 +45,12 @@ import (
 	"sync"
 	"time"
 
-	typesafe "github.com/nibir1/typesafe-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+
+	typesafe "github.com/nibir1/typesafe-go"
 )
 
 // ScopeName is the instrumentation scope these spans are emitted under.
@@ -318,7 +319,7 @@ func questionTypes(qs map[string]typesafe.Question) []string {
 	return out
 }
 
-// typeFromJSON reads the wire discriminator out of a marshalled question.
+// typeFromJSON reads the wire discriminator out of a marshaled question.
 func typeFromJSON(b []byte) string {
 	var probe struct {
 		Type string `json:"type"`

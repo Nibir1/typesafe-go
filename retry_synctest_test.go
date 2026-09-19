@@ -193,7 +193,7 @@ func TestCancellationIsImmediateUnderSynctest(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected failure")
 		}
-		// Cancelled one virtual second in, not an hour.
+		// Canceled one virtual second in, not an hour.
 		if elapsed > 2*time.Second {
 			t.Errorf("returned after %s; cancellation should abort the hour-long backoff at once", elapsed)
 		}

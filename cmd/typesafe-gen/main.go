@@ -35,6 +35,19 @@
 // and nothing in the result reveals it.
 package main
 
+// The generator uses go/parser and go/ast rather than the type checker.
+//
+// go/ast.Package and parser.ParseDir are deprecated in favor of
+// golang.org/x/tools/go/packages, and that is the right advice for almost
+// every generator — but x/tools is a third-party dependency, and this command
+// lives in the core module, whose defining guarantee is that it has none.
+//
+// The trade is acceptable because of what this generator reads: constant
+// declarations and struct tags in a single package, all of it syntax. It never
+// needs to resolve a type across package boundaries, which is the job the
+// deprecation exists to steer people towards. A generator that did need that
+// would belong in lint/, beside the analyzers.
+//
 import (
 	"bytes"
 	"flag"
@@ -165,6 +178,8 @@ func generate(dir, typeName string) ([]byte, error) {
 
 // singlePackage rejects a directory holding more than one package, rather than
 // picking one and generating against declarations the caller cannot see.
+//
+//nolint:staticcheck // SA1019: deliberate, see the note above the imports.
 func singlePackage(pkgs map[string]*ast.Package) (*ast.Package, string, error) {
 	names := make([]string, 0, len(pkgs))
 	for name := range pkgs {
@@ -183,6 +198,7 @@ func singlePackage(pkgs map[string]*ast.Package) (*ast.Package, string, error) {
 	}
 }
 
+//nolint:staticcheck // SA1019: deliberate, see the note above the imports.
 func findStruct(pkg *ast.Package, name string) (*ast.StructType, string, error) {
 	for _, file := range pkg.Files {
 		for _, decl := range file.Decls {
@@ -210,6 +226,7 @@ func findStruct(pkg *ast.Package, name string) (*ast.StructType, string, error) 
 	return nil, "", fmt.Errorf("type %s not found", name)
 }
 
+//nolint:staticcheck // SA1019: deliberate, see the note above the imports.
 func collectQuestions(pkg *ast.Package, structName string, st *ast.StructType) ([]question, error) {
 	var out []question
 
@@ -322,6 +339,8 @@ func splitTag(spec string) (kind string, opts map[string]string) {
 }
 
 // collectEnum finds every constant of the named type, in source order.
+//
+//nolint:staticcheck // SA1019: deliberate, see the note above the imports.
 func collectEnum(pkg *ast.Package, typeName, kind string) ([]enumValue, error) {
 	// Files come out of a map, so visit them in a fixed order or the enum's
 	// order — which for a Score *is* its meaning — depends on map iteration.

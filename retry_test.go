@@ -25,7 +25,7 @@ type fakeClock struct {
 	sleeps []time.Duration
 
 	// interrupt, when set, is returned by the nth Sleep call (1-based) instead
-	// of advancing, standing in for a cancelled context mid-backoff.
+	// of advancing, standing in for a canceled context mid-backoff.
 	interruptAt int
 	interrupt   error
 }
@@ -189,9 +189,9 @@ func TestShouldRetryByErrorKind(t *testing.T) {
 	if p.shouldRetry(&ResponseValidationError{Endpoint: "x", Err: errors.New("bad")}) {
 		t.Error("a malformed response is deterministic and must not retry")
 	}
-	// A caller who cancelled is not asking us to try harder.
+	// A caller who canceled is not asking us to try harder.
 	if p.shouldRetry(context.Canceled) {
-		t.Error("a cancelled context must not retry")
+		t.Error("a canceled context must not retry")
 	}
 
 	off := DefaultRetryPolicy()
@@ -406,7 +406,7 @@ func TestNonRetryableIsReturnedImmediately(t *testing.T) {
 }
 
 // TestRetriedBodiesAreIdentical: a retry that sends different bytes is a
-// different request. Re-marshalling per attempt would risk exactly that, since
+// different request. Re-marshaling per attempt would risk exactly that, since
 // Go iterates maps in a random order.
 func TestRetriedBodiesAreIdentical(t *testing.T) {
 	srv, calls, bodies := scriptedServer(t, status(500))

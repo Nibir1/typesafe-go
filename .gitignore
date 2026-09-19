@@ -70,3 +70,17 @@ __pycache__/
 
 # Deploy example binary
 /deploy/example/example
+
+# Go workspaces are deliberately NOT committed.
+#
+# A go.work listing every module would let local builds resolve the submodules
+# without their `replace` directives — but the workspace takes the highest go
+# directive of any module in it, which here is 1.26 (lint, temporal). Anyone on
+# Go 1.23 could then not build the repository at all, which breaks both the
+# declared 1.23 floor and `make verify` for exactly the contributors the floor
+# exists for.
+#
+# So the replaces stay for development, and `make release-prep` strips them
+# before submodules are tagged. Create a local go.work if you want one.
+go.work
+go.work.sum

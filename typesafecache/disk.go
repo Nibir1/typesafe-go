@@ -121,16 +121,20 @@ func (d *diskTier) put(key string, resp *typesafe.SystemOneResponse, now time.Ti
 	}
 	tmpName := tmp.Name()
 	if _, err := tmp.Write(b); err != nil {
-		tmp.Close()
-		os.Remove(tmpName)
+		// Best-effort cleanup on a path that is already returning an error.
+		// A failure to close or remove the temp file adds nothing the caller
+		// can act on, and reporting it would mask the write error that
+		// actually matters.
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("typesafecache: writing %s: %w", key, err)
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("typesafecache: closing %s: %w", key, err)
 	}
 	if err := os.Rename(tmpName, d.path(key)); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("typesafecache: installing %s: %w", key, err)
 	}
 

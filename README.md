@@ -13,10 +13,8 @@ and its model, **Jev**.
 Send one state and a map of typed questions. Get one typed answer per question, with
 calibrated probabilities your code can branch on.
 
-> **Status: pre-release, unpublished.** The client, question primitives, typed answers,
-> test doubles and resilience are built and verified against the live API. There is no tagged
-> release yet — the first will be `v1.0.0`, once the whole SDK is finished. See
-> [the roadmap](#roadmap) for what is built and what is not.
+> **Status: ready for `v1.0.0`.** Everything on the roadmap is built and verified
+> against the live API. See [Stability](#stability) for what `v1.0` commits to.
 >
 > Not affiliated with, endorsed by, or sponsored by TypeSafe AI.
 
@@ -808,6 +806,9 @@ printf 'TYPESAFE_API_KEY=%s\n' "$YOUR_KEY" > .env.local && chmod 600 .env.local
 | [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | Measured overhead and the methodology |
 | [docs/MIGRATION.md](docs/MIGRATION.md) | Coming from the Python or JavaScript SDK |
 | [docs/FAQ.md](docs/FAQ.md) | Short answers |
+| [CHANGELOG.md](CHANGELOG.md) | What changed, written by hand |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Clone to passing tests, and the house rules |
+| [SECURITY.md](SECURITY.md) | Reporting, supply chain, and what this SDK does with your data |
 | [examples/](examples) | Ten runnable programs, each replayed in CI |
 | [docs/Dev_Roadmap.md](docs/Dev_Roadmap.md) | Phase plan, competitive audit, design corrections |
 | [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) | Attribution register |
@@ -816,6 +817,59 @@ printf 'TYPESAFE_API_KEY=%s\n' "$YOUR_KEY" > .env.local && chmod 600 .env.local
 the official documentation states are contradicted by the live API, including the Score
 minimum, the Score maximum, the `400` status, the shape of `detail`, and the format of
 `release_date`.
+
+---
+
+## Stability
+
+### The API
+
+`v1.0.0` follows [Semantic Versioning](https://semver.org/) strictly. Everything
+outside `internal/` is public API, and **a breaking change to it requires a major
+version**. In practice that means:
+
+- No exported symbol is removed or renamed in a 1.x release.
+- No function signature changes in a 1.x release.
+- Anything to be removed is marked `// Deprecated:` for at least one minor cycle
+  first, with the replacement named in the comment.
+- New fields may be added to structs you construct with field names. Construct
+  them that way — an unkeyed struct literal will break, and that is on you.
+
+Three things are explicitly **not** covered:
+
+- **`internal/`** is not public, whatever your editor lets you import.
+- **Behaviour that depends on the API's answers.** A probability is not a
+  contract. If Jev starts answering a question differently, that is a change in
+  the model, not in this SDK.
+- **The wire contract corrections** in [docs/WIRE_CONTRACT.md](docs/WIRE_CONTRACT.md).
+  They describe what the server does today. If TypeSafe changes it, this SDK
+  follows, and the drift workflow is what notices.
+
+### Go versions
+
+The core module supports **the current stable Go release and the four before
+it** — today, Go 1.23 through 1.27. Raising the floor is a minor-version event,
+announced one cycle ahead.
+
+Optional modules sit higher where a dependency forces it: 1.24 for
+`langchaingo`, 1.25 for OpenTelemetry, Prometheus, the web frameworks and MCP,
+1.26 for Temporal and the analyzers. **That constrains those modules, not you** —
+the core and `integrations/nethttp` build on 1.23, and nothing stops a Go 1.23
+program using the SDK without them.
+
+### Submodules version independently
+
+`typesafecache`, `typesafeotel`, `typesafeprom`, `lint` and every
+`integrations/*` module has its own `go.mod` and its own tag. A breaking change
+in one does not force a major bump in the rest, and you take only what you
+import.
+
+### The model alias
+
+The SDK defaults to `jev-latest`, matching the official SDKs, and **never pins a
+version on your behalf**. Aliases move without notice. Pin an exact model id if
+you need reproducibility — and if you use the cache, read
+[the alias section](docs/OBSERVABILITY.md), which is built around this.
 
 ---
 
@@ -882,8 +936,11 @@ Built and verified:
   MCP server with `evaluate_policy`
 - **Phase 15** — **docs and DX**: ten runnable examples replayed in CI, benchmarks with
   a regression gate, and the guides above
+- **Phase 16** — **release engineering**: pinned CI, signed and provenance-attested
+  releases, an SBOM, a licence audit, and the tooling that makes every submodule
+  actually installable
 
-Next: release engineering and `v1.0.0`. Full plan in
+Everything on the roadmap is built. Full plan in
 [docs/Dev_Roadmap.md](docs/Dev_Roadmap.md).
 
 ---

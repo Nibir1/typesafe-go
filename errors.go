@@ -64,7 +64,7 @@ type APIError struct {
 	// ValidationDetail for schema failures (422), and a single object with
 	// error_type and message for everything else. Neither shape is published;
 	// both were observed against the live API. A client that assumes one shape
-	// silently loses the other, which is why both are modelled here.
+	// silently loses the other, which is why both are modeled here.
 	Reason *ErrorDetail
 
 	// secret is the credential in play when this error was produced, so that
@@ -267,7 +267,7 @@ func (e *ConnectionError) Is(target error) bool { return target == ErrConnection
 
 // TimeoutError is a deadline exceeded while waiting for a response.
 //
-// A caller's own cancelled context surfaces as context.Canceled, not as this:
+// A caller's own canceled context surfaces as context.Canceled, not as this:
 // deliberate cancellation is not a timeout, and conflating them makes shutdown
 // paths log spurious failures.
 type TimeoutError struct {

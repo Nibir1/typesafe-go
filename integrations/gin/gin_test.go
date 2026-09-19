@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+
 	typesafe "github.com/nibir1/typesafe-go"
 	tsgin "github.com/nibir1/typesafe-go/integrations/gin"
 )

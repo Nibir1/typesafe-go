@@ -89,7 +89,7 @@ type Estimate struct {
 //
 // The caller marshals, because only the client knows the exact wire shape —
 // the model field, the envelope keys, the question map. An earlier version of
-// this package marshalled the parts itself and summed them, which silently
+// this package marshaled the parts itself and summed them, which silently
 // omitted the envelope and made every estimate fall *below* the true count.
 // That is the one direction a conservative estimator must never be wrong in,
 // and it is why Total is derived from the whole serialized request rather than

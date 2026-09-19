@@ -226,7 +226,7 @@ type Entry struct {
 // inconsistency that erodes trust in a linter.
 func Words(text string) []string {
 	return strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
-		return !('a' <= r && r <= 'z' || '0' <= r && r <= '9' || r == '\'')
+		return ('a' > r || r > 'z') && ('0' > r || r > '9') && r != '\''
 	})
 }
 

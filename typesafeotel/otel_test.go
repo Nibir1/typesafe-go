@@ -9,13 +9,14 @@ import (
 	"testing"
 	"time"
 
-	typesafe "github.com/nibir1/typesafe-go"
-	"github.com/nibir1/typesafe-go/typesafeotel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	oteltrace "go.opentelemetry.io/otel/trace"
+
+	typesafe "github.com/nibir1/typesafe-go"
+	"github.com/nibir1/typesafe-go/typesafeotel"
 )
 
 // --- harness -----------------------------------------------------------------

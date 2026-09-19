@@ -103,7 +103,7 @@ func benchRequest() *typesafe.SystemOneRequest {
 // --- the headline pair -------------------------------------------------------
 
 // BenchmarkSystemOne is one full client call: validation, token estimate,
-// marshalling, the round trip, and decoding.
+// marshaling, the round trip, and decoding.
 func BenchmarkSystemOne(b *testing.B) {
 	srv := benchServer(b)
 	c, err := typesafe.NewClient(

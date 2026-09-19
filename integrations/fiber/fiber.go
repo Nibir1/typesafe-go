@@ -16,13 +16,14 @@
 //
 // The consequence worth knowing: **pass c.Context() to SystemOne**, not
 // context.Background(). Fiber's context is the one that carries the client and
-// the correlation id, and it is also the one cancelled when the client hangs
+// the correlation id, and it is also the one canceled when the client hangs
 // up — which is what stops an abandoned request from continuing to spend
 // tokens.
 package fiber
 
 import (
 	"github.com/gofiber/fiber/v3"
+
 	typesafe "github.com/nibir1/typesafe-go"
 	"github.com/nibir1/typesafe-go/integrations/nethttp"
 )

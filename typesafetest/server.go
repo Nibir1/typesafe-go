@@ -4,7 +4,7 @@
 //
 // Two levels are available, and they test different things.
 //
-// Server runs a real httptest server, so the SDK's own marshalling, status
+// Server runs a real httptest server, so the SDK's own marshaling, status
 // mapping, and error typing all execute. Use it when the behavior under test
 // involves the client.
 //

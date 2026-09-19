@@ -139,7 +139,7 @@ func TestRecordingIsDeterministic(t *testing.T) {
 }
 
 // TestMatchKeyIgnoresKeyOrder: the match key is over the canonical form, so a
-// request re-marshalled with different map ordering still finds its recording.
+// request re-marshaled with different map ordering still finds its recording.
 // Without this, replay would be flaky in exactly the way Go maps are.
 func TestMatchKeyIgnoresKeyOrder(t *testing.T) {
 	path := recordMixed(t, t.TempDir())

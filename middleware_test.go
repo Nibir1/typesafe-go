@@ -461,7 +461,7 @@ func TestAsyncDeliversCancellationAsAResult(t *testing.T) {
 			t.Error("cancellation should arrive as an error on the channel")
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("the channel was never woken; a cancelled call must still deliver a result")
+		t.Fatal("the channel was never woken; a canceled call must still deliver a result")
 	}
 }
 
@@ -643,7 +643,7 @@ func count2(t *testing.T, q typesafe.Question) int {
 	return len(got.Criteria)
 }
 
-// TestBuildersValidateAsTheirQuestion: a builder that marshalled fine but
+// TestBuildersValidateAsTheirQuestion: a builder that marshaled fine but
 // failed validation as an "unknown type" would look like it worked right up
 // until the checks that matter.
 func TestBuildersValidateAsTheirQuestion(t *testing.T) {

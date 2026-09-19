@@ -271,7 +271,7 @@ func TestTypedScoreRejectsMisorderedLevels(t *testing.T) {
 }
 
 // The plain question's own rules still apply underneath the wrapper: this is
-// the trap the fluent builders fell into, where a wrapper marshalled fine and
+// the trap the fluent builders fell into, where a wrapper marshaled fine and
 // then failed validation as an "unknown type".
 func TestTypedScoreStillHitsTheLevelCeiling(t *testing.T) {
 	levels := make([]typesafe.TypedLevel[Severity], 0, 11)
@@ -379,7 +379,7 @@ func TestTypedScoreAnswerRoundTripsTenLevels(t *testing.T) {
 	// Every declared level appears, and its legend entry is the description
 	// the question was built with.
 	declared := q.Levels()
-	criteria := q.Score.Criteria
+	criteria := q.Criteria
 	for i, lvl := range declared {
 		if int(lvl) != i {
 			t.Fatalf("declared level %d has value %d", i, lvl)

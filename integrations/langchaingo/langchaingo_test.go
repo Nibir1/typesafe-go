@@ -9,11 +9,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tmc/langchaingo/chains"
+	"github.com/tmc/langchaingo/tools"
+
 	typesafe "github.com/nibir1/typesafe-go"
 	"github.com/nibir1/typesafe-go/cassette"
 	tslangchain "github.com/nibir1/typesafe-go/integrations/langchaingo"
-	"github.com/tmc/langchaingo/chains"
-	"github.com/tmc/langchaingo/tools"
 )
 
 var update = flag.Bool("update", false, "re-record the cassette against the live API")

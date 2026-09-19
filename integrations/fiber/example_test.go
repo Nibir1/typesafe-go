@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/gofiber/fiber/v3"
+
 	typesafe "github.com/nibir1/typesafe-go"
 	tsfiber "github.com/nibir1/typesafe-go/integrations/fiber"
 )
@@ -27,7 +28,7 @@ func Example() {
 		}
 
 		// c.Context() is the context carrying the client and the correlation
-		// id, and the one cancelled when the caller hangs up.
+		// id, and the one canceled when the caller hangs up.
 		resp, err := tsfiber.MustFrom(c).SystemOne(c.Context(), &typesafe.SystemOneRequest{
 			State: body.Ticket,
 			Questions: typesafe.Questions{

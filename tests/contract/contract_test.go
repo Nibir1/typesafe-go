@@ -25,14 +25,9 @@ import (
 // 10 levels."
 const maxScoreLevels = 10
 
-// tolerance for float comparisons on probability distributions.
-const eps = 1e-6
-
 type fixture = fixtures.Fixture
 
 func loadFixtures(t *testing.T) []fixture { return fixtures.All(t) }
-
-func readJSON(t *testing.T, path string) map[string]any { return fixtures.ReadJSON(t, path) }
 
 func num(t *testing.T, v any, ctx string) float64 {
 	t.Helper()

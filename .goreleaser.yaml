@@ -1,0 +1,126 @@
+# GoReleaser builds the CLI binaries for a tagged release.
+#
+# Only the CLIs are built. The library itself needs no artifact — `go get`
+# fetches source from the module proxy, and a tarball of a Go library is a
+# thing nobody installs.
+version: 2
+
+project_name: typesafe
+
+before:
+  hooks:
+    # A release must not be the first place a tidy failure is noticed.
+    - go mod tidy
+    - go mod verify
+
+builds:
+  - id: typesafe
+    main: ./cmd/typesafe
+    binary: typesafe
+    env:
+      # Static binaries. A CLI that needs a matching libc on the target is a
+      # CLI people cannot use from a scratch container.
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    # -s -w strip the symbol table and DWARF: smaller binary, and a stack
+    # trace from a released build is not something anyone debugs from anyway.
+    # Only Version is stamped. The commit and build time come from the Go
+    # toolchain's own VCS stamping, which `typesafe version` already reads
+    # through debug.ReadBuildInfo — duplicating them as ldflags would create
+    # two sources for one fact.
+    ldflags:
+      - -s -w
+      - -X github.com/nibir1/typesafe-go.Version={{.Version}}
+    # Reproducible: the timestamp comes from the commit, not from the clock on
+    # whichever runner happened to build it.
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+  - id: typesafe-gen
+    main: ./cmd/typesafe-gen
+    binary: typesafe-gen
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+      - -X github.com/nibir1/typesafe-go.Version={{.Version}}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: default
+    ids: [typesafe, typesafe-gen]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - NOTICE
+      - THIRD_PARTY_NOTICES.md
+      - README.md
+
+checksums:
+  name_template: checksums.txt
+  algorithm: sha256
+
+# Every artifact is signed with a keyless Sigstore certificate tied to this
+# workflow's OIDC identity. There is no private key to leak, and the signature
+# records which workflow in which repository produced the binary.
+signs:
+  - cmd: cosign
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+    output: true
+
+sboms:
+  - id: archive
+    artifacts: archive
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  # The changelog is written by hand in CHANGELOG.md. A list of commit
+  # subjects is a log, not a changelog: it tells a reader what was typed, not
+  # what changed for them.
+  disable: true
+
+release:
+  draft: false
+  prerelease: auto
+  footer: |
+    ## Install
+
+    ```bash
+    go install github.com/nibir1/typesafe-go/cmd/typesafe@{{ .Tag }}
+    go install github.com/nibir1/typesafe-go/cmd/typesafe-gen@{{ .Tag }}
+    ```
+
+    ## Verify
+
+    Every checksum file is signed with a keyless Sigstore certificate:
+
+    ```bash
+    cosign verify-blob checksums.txt \
+      --certificate checksums.txt.pem \
+      --signature checksums.txt.sig \
+      --certificate-identity-regexp 'https://github\.com/nibir1/typesafe-go/\.github/workflows/release\.yml@.*' \
+      --certificate-oidc-issuer https://token.actions.githubusercontent.com
+    ```
+
+    Build provenance is attested separately and verifiable with:
+
+    ```bash
+    gh attestation verify <archive> --repo nibir1/typesafe-go
+    ```
+
+    See [CHANGELOG.md](https://github.com/nibir1/typesafe-go/blob/{{ .Tag }}/CHANGELOG.md)
+    for what changed.

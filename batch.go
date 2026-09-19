@@ -242,7 +242,7 @@ func WithItemCallback(fn func(ItemResult)) BatchOption {
 // ninety-nine good results is not useful, and retrying the whole thing to
 // recover them is worse.
 //
-// Cancelling ctx stops the batch: items already running finish or fail, and
+// Canceling ctx stops the batch: items already running finish or fail, and
 // items not yet started are returned with the context error. Every result slot
 // is filled either way, so Items always has one entry per input.
 func (c *Client) SystemOneBatch(ctx context.Context, states []any, qs Questions, opts ...BatchOption) BatchResult {
@@ -338,7 +338,7 @@ func (c *Client) SystemOneBatch(ctx context.Context, states []any, qs Questions,
 // matters, or when downstream work can start on the first result. Results
 // arrive in **completion** order; ItemResult.Index gives the input position.
 //
-// Breaking out of the range stops the batch: the remaining work is cancelled
+// Breaking out of the range stops the batch: the remaining work is canceled
 // and every goroutine exits before the loop returns.
 func (c *Client) SystemOneBatchSeq(ctx context.Context, states []any, qs Questions, opts ...BatchOption) iter.Seq2[int, ItemResult] {
 	return func(yield func(int, ItemResult) bool) {
@@ -358,10 +358,10 @@ func (c *Client) SystemOneBatchSeq(ctx context.Context, states []any, qs Questio
 		defer cancel()
 
 		// stopped is closed when the *consumer* gives up, which is a different
-		// thing from the context being cancelled.
+		// thing from the context being canceled.
 		//
 		// A send abandoned because ctx is done loses a result that somebody is
-		// still waiting to read: a cancelled batch would then report fewer
+		// still waiting to read: a canceled batch would then report fewer
 		// items than it has inputs, and in the worst case none at all, with no
 		// error anywhere to say so. Cancellation stops new work and fails the
 		// rest — every input is still accounted for, exactly as in
@@ -448,7 +448,7 @@ type adaptiveLimiter struct {
 	peak int
 	min  int
 
-	// waiters are signalled when a slot frees or the limit grows.
+	// waiters are signaled when a slot frees or the limit grows.
 	cond *sync.Cond
 }
 
@@ -471,7 +471,7 @@ func (l *adaptiveLimiter) acquire(ctx context.Context) bool {
 	l.mu.Lock()
 	// Fast path: a free slot needs no watchdog. This is the common case on a
 	// large batch — one goroutine per item just to watch a context that is
-	// never cancelled would cost more than the work it guards.
+	// never canceled would cost more than the work it guards.
 	if l.inFlight < l.limit {
 		l.take()
 		l.mu.Unlock()
@@ -479,7 +479,7 @@ func (l *adaptiveLimiter) acquire(ctx context.Context) bool {
 	}
 	l.mu.Unlock()
 
-	// Slow path. sync.Cond has no deadline, so a cancelled context would leave
+	// Slow path. sync.Cond has no deadline, so a canceled context would leave
 	// the waiter parked forever; a watchdog broadcasts to wake it.
 	done := make(chan struct{})
 	defer close(done)

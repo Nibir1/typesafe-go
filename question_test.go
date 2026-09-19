@@ -12,7 +12,7 @@ import (
 	typesafe "github.com/nibir1/typesafe-go"
 )
 
-// --- marshalling -------------------------------------------------------------
+// --- marshaling -------------------------------------------------------------
 
 // TestQuestionsMarshalToTheWireForm checks each primitive against the exact
 // JSON the API documents, including the details that are easy to get wrong:
@@ -113,7 +113,7 @@ func TestScoreCriteriaOrderSurvives(t *testing.T) {
 	}
 }
 
-// TestTypedQuestionsReproduceGoldenFixtures is the strongest marshalling
+// TestTypedQuestionsReproduceGoldenFixtures is the strongest marshaling
 // check available: rebuild each golden contract request using the typed
 // primitives and assert it is semantically identical to the file that was
 // replayed successfully against the live API.
@@ -464,7 +464,7 @@ func TestDiscriminatedAnswer(t *testing.T) {
 	}
 }
 
-// TestConfidenceReportsAbsenceForNoul guards the trap that motivated modelling
+// TestConfidenceReportsAbsenceForNoul guards the trap that motivated modeling
 // NoulAnswer without a Confidence field. Returning 0 would read as "maximally
 // uncertain" for every Noul, which is the opposite of the truth for a 0.92.
 func TestConfidenceReportsAbsenceForNoul(t *testing.T) {
@@ -574,7 +574,7 @@ func TestScoreHelpers(t *testing.T) {
 
 // TestScoreWithStructuredLegend: the prose docs type legend as
 // map<string,string>, but the schema and the live API allow structured level
-// descriptions. Modelling it as string silently breaks structured rubrics.
+// descriptions. Modeling it as string silently breaks structured rubrics.
 func TestScoreWithStructuredLegend(t *testing.T) {
 	r := decodeResponse(t, `{
 	  "model":"jev-1.13.0",
@@ -686,7 +686,7 @@ func TestAnswerHelpersOnDegenerateInput(t *testing.T) {
 
 // TestMarshalWithNilCriteria: criteria is a required field, so it must be
 // emitted even when the caller left it nil. Validate rejects that request, but
-// marshalling must still produce legal JSON rather than an omitted key.
+// marshaling must still produce legal JSON rather than an omitted key.
 func TestMarshalWithNilCriteria(t *testing.T) {
 	b, err := json.Marshal(typesafe.Choice{Instructions: "x"})
 	if err != nil {

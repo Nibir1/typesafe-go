@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/labstack/echo/v4"
+
 	typesafe "github.com/nibir1/typesafe-go"
 	tsecho "github.com/nibir1/typesafe-go/integrations/echo"
 )

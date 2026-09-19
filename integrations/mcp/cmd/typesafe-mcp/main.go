@@ -60,6 +60,7 @@ import (
 	"syscall"
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
+
 	typesafe "github.com/nibir1/typesafe-go"
 	"github.com/nibir1/typesafe-go/decision"
 	tsmcp "github.com/nibir1/typesafe-go/integrations/mcp"
@@ -96,7 +97,7 @@ func run(args []string) int {
 		return exitUsage
 	}
 	if *showVersion {
-		fmt.Fprintf(os.Stdout, "typesafe-mcp %s\n", typesafe.Version)
+		fmt.Fprintf(os.Stdout, "typesafe-mcp %s\n", typesafe.VersionString())
 		return exitOK
 	}
 
