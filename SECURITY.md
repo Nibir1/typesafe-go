@@ -91,14 +91,21 @@ workflow in which repository produced it.
 cosign verify-blob checksums.txt \
   --certificate checksums.txt.pem \
   --signature checksums.txt.sig \
-  --certificate-identity-regexp 'https://github\.com/nibir1/typesafe-go/\.github/workflows/ci\.yml@.*' \
+  --certificate-identity-regexp 'https://github\.com/Nibir1/typesafe-go/\.github/workflows/ci\.yml@.*' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
+
+> The identity uses **`Nibir1`** with a capital N. That is GitHub's canonical
+> casing for the owner, and it is what Sigstore records in the certificate.
+> cosign matches the identity as a case-sensitive regular expression, so the
+> lowercase spelling — which is correct for the *Go module path* — fails to
+> match a perfectly good signature and makes a legitimate release look
+> tampered with.
 
 **Build provenance is attested**, and an SBOM ships with each archive:
 
 ```bash
-gh attestation verify typesafe_1.0.0_linux_amd64.tar.gz --repo nibir1/typesafe-go
+gh attestation verify typesafe_1.0.0_linux_amd64.tar.gz --repo Nibir1/typesafe-go
 ```
 
 ### A pinned action is not a safe action

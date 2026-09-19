@@ -125,10 +125,10 @@ Stated plainly, because finding them yourself later is worse:
 cosign verify-blob checksums.txt \
   --certificate checksums.txt.pem \
   --signature checksums.txt.sig \
-  --certificate-identity-regexp 'https://github\.com/nibir1/typesafe-go/\.github/workflows/ci\.yml@.*' \
+  --certificate-identity-regexp 'https://github\.com/Nibir1/typesafe-go/\.github/workflows/ci\.yml@.*' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 
-gh attestation verify <archive> --repo nibir1/typesafe-go
+gh attestation verify <archive> --repo Nibir1/typesafe-go
 ```
 
 ### Getting started
