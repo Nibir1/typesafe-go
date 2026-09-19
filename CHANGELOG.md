@@ -10,7 +10,7 @@ records what was typed, not what changed for you.
 
 Nothing yet.
 
-## [1.0.0] — unreleased
+## [1.0.0] — 2026-09-19
 
 The first release. Everything below is new, so rather than an inventory of every
 symbol — [pkg.go.dev](https://pkg.go.dev/github.com/nibir1/typesafe-go) does that

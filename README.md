@@ -1112,42 +1112,6 @@ this SDK matches deliberately — is in [MIGRATION.md](docs/MIGRATION.md).
 
 ---
 
-## Roadmap
-
-Built and verified:
-
-- **Phase 0** — wire contract locked, OpenAPI vendored, 10 golden fixtures, drift detection
-- **Phase 1** — client, options, typed errors, `/v1/models`
-- **Phase 2** — `Noul`/`Choice`/`Score`, typed answers, validation, reference checking
-- **Phase 3** — cassettes, mock, test server, canonical hashing
-- **Phase 4** — retries, backoff, retry budget, circuit breaker
-- **Phase 6** — **the `decision` package**: probability algebra, weighted policies,
-  confidence bands, routing, and weight calibration from labeled data
-- **Phase 7** — context-budget and cost pre-flight, quota guard
-- **Phase 8** — the `typesafe` CLI
-- **Phase 9** — **three static analyzers**: `atomicquestion`, `jaggededge`,
-  `confidencecheck`
-- **Phase 10** — interceptors, hooks, async fan-out, fluent constructors
-- **Phase 11** — **batching**: bounded worker pool, per-item error isolation, input
-  ordering, globally adaptive concurrency, and an `iter.Seq2` streaming view
-- **Phase 12** — **compile-time typed questions**: `TypedChoice`/`TypedScore` over your
-  own enums, `Exhaustive` drift detection, and `typesafe-gen`
-- **Phase 13** — **observability and caching**: `typesafeotel`, `typesafeprom`, and a
-  response cache keyed on the resolved model id
-- **Phase 14** — **integrations**: four HTTP middlewares, LangChainGo, Temporal, and an
-  MCP server with `evaluate_policy`
-- **Phase 15** — **docs and DX**: ten runnable examples replayed in CI, benchmarks with
-  a regression gate, and the guides above
-- **Phase 16** — **release engineering**: pinned CI, signed and provenance-attested
-  releases, an SBOM, a licence audit, and the tooling that makes every submodule
-  actually installable
-
-Everything planned is built. The design history — the phase plan, the competitive
-audit and every correction made along the way — is kept in the working tree rather
-than published.
-
----
-
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).

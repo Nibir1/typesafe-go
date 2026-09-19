@@ -61,7 +61,7 @@ archives:
       - THIRD_PARTY_NOTICES.md
       - README.md
 
-checksums:
+checksum:
   name_template: checksums.txt
   algorithm: sha256
 
