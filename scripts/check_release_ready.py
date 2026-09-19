@@ -51,9 +51,9 @@ REQUIRE = re.compile(r"^\s*(github\.com/nibir1/typesafe-go\S*)\s+(v\S+)", re.M)
 OK, ERR, WARN, DIM, OFF = "\033[32m", "\033[31m", "\033[33m", "\033[2m", "\033[0m"
 
 
-def check_replaces(version: str | None) -> list[str]:
+def check_replaces(version: str | None, modules: list[str]) -> list[str]:
     problems = []
-    for module in SUBMODULES:
+    for module in modules:
         gomod = os.path.join(ROOT, module, "go.mod")
         if not os.path.isfile(gomod):
             problems.append(f"{module}: no go.mod")
@@ -110,10 +110,22 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--version", help="the version about to be tagged, e.g. v1.0.0")
     ap.add_argument("--allow-dirty", action="store_true")
+    ap.add_argument("--only", default="",
+                    help="comma-separated subset of the submodules; the default "
+                         "is all of them. A release checks one tier at a time, "
+                         "because a later tier is not pinned yet.")
     args = ap.parse_args()
 
+    selected = SUBMODULES
+    if args.only:
+        selected = [m.strip() for m in args.only.split(",") if m.strip()]
+        unknown = [m for m in selected if m not in SUBMODULES]
+        if unknown:
+            print(f"  {ERR}✗ not submodules: {', '.join(unknown)}{OFF}")
+            return 2
+
     problems: list[str] = []
-    problems += check_replaces(args.version)
+    problems += check_replaces(args.version, selected)
     problems += check_version_constant(args.version)
     problems += check_changelog(args.version)
     if not args.allow_dirty:
@@ -127,7 +139,7 @@ def main() -> int:
 
     scope = args.version or "the current tree"
     print(f"  {OK}✓ ready to release {scope}{OFF}")
-    print(f"  {DIM}  {len(SUBMODULES)} submodule(s) checked; "
+    print(f"  {DIM}  {len(selected)} submodule(s) checked; "
           f"{', '.join(UNPUBLISHED)} are not published{OFF}")
     return 0
 

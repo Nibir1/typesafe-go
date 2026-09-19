@@ -137,14 +137,31 @@ def main() -> int:
     ap.add_argument("--version", required=True, help="the published version, e.g. v1.0.0")
     ap.add_argument("--revert", action="store_true",
                     help="restore development replaces instead")
+    ap.add_argument("--only", default="",
+                    help="comma-separated subset of the submodules, in release "
+                         "order; the default is all of them")
     args = ap.parse_args()
+
+    # A release pins the submodules in tiers, because a module cannot be
+    # tagged until everything it depends on is already served by the proxy.
+    # Pinning only the tier being tagged keeps every commit self-consistent:
+    # gin does not require integrations/nethttp v1.0.0 in a commit pushed
+    # before that tag exists, so CI on the tier-1 tags is not red for the
+    # minutes it takes the proxy to catch up.
+    selected = SUBMODULES
+    if args.only:
+        selected = [m.strip() for m in args.only.split(",") if m.strip()]
+        unknown = [m for m in selected if m not in SUBMODULES]
+        if unknown:
+            print(f"  {ERR}✗ not submodules: {', '.join(unknown)}{OFF}")
+            return 2
 
     if not re.fullmatch(r"v\d+\.\d+\.\d+(-\S+)?", args.version):
         print(f"  {ERR}✗ {args.version} is not a semantic version tag{OFF}")
         return 2
 
     changed = 0
-    for module in SUBMODULES:
+    for module in selected:
         path = os.path.join(ROOT, module, "go.mod")
         if not os.path.isfile(path):
             print(f"  {ERR}✗ {module}/go.mod is missing{OFF}")

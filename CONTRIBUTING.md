@@ -204,9 +204,19 @@ version from them means the two cannot disagree.
 3. Runs `make verify` in full.
 4. Prints the plan, and stops unless `CONFIRM=yes`.
 5. Tags and pushes the root, then **waits for proxy.golang.org to serve it**.
-6. Runs `make release-prep`, tidies and tests all eleven submodules, and tags
-   each one.
-7. Restores the development replaces.
+6. Re-points, tests and tags the eight submodules that depend only on the
+   root, then waits for `integrations/nethttp` on the proxy.
+7. Re-points, tests and tags `gin`, `echo` and `fiber`, which import it.
+8. Restores the development replaces.
+
+Each tier is pinned just before it is tagged, not all at once up front. A
+commit that requires `integrations/nethttp v1.0.0` before that tag exists is a
+commit CI cannot build, and the tier-1 tags are pushed from it.
+
+`examples` and `deploy/example` are never tagged, but they are tidied at every
+step. `deploy/example` replaces three submodules with local directories, so
+pinning those raises the version it resolves and its own `require` lines go
+stale. It is not published; it still has to build.
 
 ### Why the ordering is not negotiable
 

@@ -49,6 +49,16 @@ readonly TIER2=(
 )
 readonly SUBMODULES=("${TIER1[@]}" "${TIER2[@]}")
 
+# Never tagged, so their replaces never reach a consumer — but they live in the
+# repository and CI builds them, and `deploy/example` replaces three submodules
+# with local directories. Pinning those submodules raises the version this
+# module resolves, so its own `require` lines go stale and it stops building.
+# The first release left it that way: eight tags were pushed, and the CI run on
+# each of them was red at "Deploy example builds" and "Licence audit" for a
+# module nobody ships. Every commit has to build, including the ones made
+# halfway through a release.
+readonly UNPUBLISHED=(examples deploy/example)
+
 if [[ -t 1 ]]; then
   readonly B=$'\033[1m' R=$'\033[31m' G=$'\033[32m' Y=$'\033[33m' D=$'\033[2m' O=$'\033[0m'
 else
@@ -229,19 +239,22 @@ ok "pushed $VERSION"
 step "Waiting for the module proxy"
 note "the submodules cannot resolve the root until the proxy has served it"
 
+# Fifteen minutes, not five. The root was served in under a minute and
+# integrations/nethttp took longer than five, which stopped a release that was
+# otherwise finished. Waiting costs nothing; stopping halfway costs a resume.
 PROXY_OK=no
-for attempt in $(seq 1 30); do
+for attempt in $(seq 1 60); do
   if GOPROXY=https://proxy.golang.org GOFLAGS= \
      go list -m "github.com/nibir1/typesafe-go@$VERSION" > /dev/null 2>&1; then
     PROXY_OK=yes
     ok "proxy.golang.org is serving $VERSION (after ${attempt} check(s))"
     break
   fi
-  sleep 10
+  sleep 15
 done
 
 if [[ "$PROXY_OK" != "yes" ]]; then
-  warn "the proxy has not served $VERSION after five minutes"
+  warn "the proxy has not served $VERSION after fifteen minutes"
   note "the root tag is published; finish the submodules by hand when it appears:"
   note "  make release-prep VERSION=$VERSION"
   exit 1
@@ -252,8 +265,7 @@ fi
 fi
 
 step "Re-pointing the submodules"
-
-python3 scripts/release_prep.py --version "$VERSION"
+note "one tier at a time; a commit must never require a tag that does not exist yet"
 
 # tier_prepare tidies, builds and tests the modules in a tier.
 tier_prepare() {
@@ -264,6 +276,34 @@ tier_prepare() {
       || die "$module failed after re-pointing; the root tag is published. Fix, then resume with RESUME=submodules"
   done
 }
+
+# commit_if_changed keeps a resume idempotent. Re-running a tier that is
+# already committed must not abort on "nothing to commit".
+commit_if_changed() {
+  local message="$1"
+  would git add -A
+  if [[ "$CONFIRM" == "yes" ]] && git diff --cached --quiet; then
+    note "nothing to commit: $message"
+    return 0
+  fi
+  would git commit -m "$message"
+  would git push "$REMOTE" HEAD
+}
+
+# tidy_unpublished keeps examples and deploy/example building against whatever
+# the submodules currently require, so the commit about to be pushed is one CI
+# can go green on.
+tidy_unpublished() {
+  local module
+  for module in "${UNPUBLISHED[@]}"; do
+    ( cd "$module" && go mod tidy > /dev/null 2>&1 && go build ./... > /dev/null 2>&1 ) \
+      || die "$module does not build after re-pointing; fix it before committing"
+    note "$module tidied"
+  done
+}
+
+# join_modules renders a tier as the --only argument the Python tools take.
+join_modules() { local IFS=,; echo "$*"; }
 
 # tier_tag commits nothing; it only tags what is already committed.
 tier_tag() {
@@ -281,15 +321,16 @@ tier_tag() {
 }
 
 step "Tier 1: modules that depend only on the root"
+python3 scripts/release_prep.py --version "$VERSION" --only "$(join_modules "${TIER1[@]}")"
 tier_prepare "${TIER1[@]}"
+tidy_unpublished
 
 python3 scripts/check_release_ready.py --version "$VERSION" --allow-dirty \
-  || die "release readiness check failed"
+  --only "$(join_modules "${TIER1[@]}")" \
+  || die "release readiness check failed for tier 1"
 
-step "Committing the pinned go.mod files"
-would git add -A
-would git commit -m "Pin submodules to $VERSION"
-would git push "$REMOTE" HEAD
+step "Committing tier 1"
+commit_if_changed "Pin the independent submodules to $VERSION"
 
 step "Tagging tier 1"
 tier_tag "${TIER1[@]}"
@@ -298,24 +339,27 @@ step "Waiting for integrations/nethttp on the proxy"
 note "gin, echo and fiber cannot resolve their own go.mod until it is served"
 
 NETHTTP_OK=no
-for attempt in $(seq 1 30); do
+for attempt in $(seq 1 60); do
   if GOPROXY=https://proxy.golang.org GOFLAGS= \
      go list -m "github.com/nibir1/typesafe-go/integrations/nethttp@$VERSION" > /dev/null 2>&1; then
     NETHTTP_OK=yes
     ok "the proxy is serving integrations/nethttp@$VERSION (after ${attempt} check(s))"
     break
   fi
-  sleep 10
+  sleep 15
 done
 [[ "$NETHTTP_OK" == "yes" ]] || die "nethttp is not on the proxy yet; resume with RESUME=submodules once it is"
 
 step "Tier 2: the framework integrations"
+python3 scripts/release_prep.py --version "$VERSION" --only "$(join_modules "${TIER2[@]}")"
 tier_prepare "${TIER2[@]}"
+tidy_unpublished
+
+python3 scripts/check_release_ready.py --version "$VERSION" --allow-dirty \
+  || die "release readiness check failed"
 
 step "Committing tier 2"
-would git add -A
-would git commit -m "Pin the framework integrations to $VERSION"
-would git push "$REMOTE" HEAD
+commit_if_changed "Pin the framework integrations to $VERSION"
 
 step "Tagging tier 2"
 tier_tag "${TIER2[@]}"
@@ -327,8 +371,8 @@ python3 scripts/release_prep.py --version "$VERSION" --revert
 for module in "${SUBMODULES[@]}"; do
   ( cd "$module" && go mod tidy > /dev/null 2>&1 ) || true
 done
-would git commit -am "Restore development replaces after $VERSION"
-would git push "$REMOTE" HEAD
+tidy_unpublished
+commit_if_changed "Restore development replaces after $VERSION"
 
 step "Done"
 ok "$VERSION released"
