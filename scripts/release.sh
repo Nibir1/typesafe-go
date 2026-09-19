@@ -172,6 +172,23 @@ fi
 
 # --- the gate -----------------------------------------------------------------
 
+# A resume runs the gate against a tree an interrupted release may have left
+# half-repointed: go.mod pinned to a version whose entry is not in go.sum yet,
+# because the tidy that would have written it is a step the gate comes before.
+# The gate then fails on the exact state the resume exists to finish, and there
+# is no way forward from inside the script.
+#
+# So on a resume, tidy first. It only ever completes what the re-pointing
+# started, and the gate still runs on the result — which is the tree that is
+# about to be committed and tagged.
+if [[ "$RESUME" == "submodules" ]]; then
+  step "Tidying what the interrupted release left"
+  for module in "${SUBMODULES[@]}" "${UNPUBLISHED[@]}"; do
+    ( cd "$module" && go mod tidy > /dev/null 2>&1 ) || true
+  done
+  ok "${#SUBMODULES[@]} submodule(s) and ${#UNPUBLISHED[@]} unpublished module(s) tidied"
+fi
+
 step "Full offline gate"
 note "this is what CI runs; a tag is not the place to discover a failure"
 make verify > /tmp/release-verify.log 2>&1 || {

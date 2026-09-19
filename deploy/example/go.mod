@@ -12,7 +12,7 @@ replace (
 )
 
 require (
-	github.com/nibir1/typesafe-go v0.0.0
+	github.com/nibir1/typesafe-go v1.0.0
 	github.com/nibir1/typesafe-go/typesafecache v0.0.0-00010101000000-000000000000
 	github.com/nibir1/typesafe-go/typesafeotel v0.0.0-00010101000000-000000000000
 	github.com/nibir1/typesafe-go/typesafeprom v0.0.0-00010101000000-000000000000
