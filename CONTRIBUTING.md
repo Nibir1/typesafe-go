@@ -237,6 +237,60 @@ provenance.
 A tag is not the place to discover a failing test, so nothing is built until
 the gate passes.
 
+### When something fails after the root tag is pushed
+
+The root tag is the one irreversible step. Everything after it is retryable,
+and each failure has its own way back.
+
+**A submodule failed to tidy, build or test.** Nothing was tagged: the script
+tags tier 1 only after every module in it passes. Fix the module, commit, and
+pick up where it stopped:
+
+```bash
+make release VERSION=v1.0.0 CONFIRM=yes RESUME=submodules
+```
+
+`RESUME=submodules` skips the root — it checks the tag is already on the remote
+and refuses if it is not — and tolerates the dirty tree the re-pointing leaves
+behind.
+
+**The framework integrations could not resolve `integrations/nethttp`.** They
+depend on it, and a `go.mod` re-pointed at `integrations/nethttp v1.0.0` cannot
+resolve until the proxy is serving that tag. This is why the submodules are
+tagged in two tiers with a wait between them. If the wait times out, resume
+once `go list -m github.com/nibir1/typesafe-go/integrations/nethttp@v1.0.0`
+answers.
+
+**The workflow itself was the bug.** A tag run uses the workflow file from
+*that tag's commit*, so re-running it re-runs the bug, and moving the tag is
+not an option — see below. Fix the workflow on `main`, then run the workflow
+manually with `publish_tag` set to the tag. That path runs from `main`, so it
+uses the fixed file, checks out the tag's tree to build from, and adds only
+what was never published: the release page, the archives, the signatures and
+the SBOM. It refuses a submodule tag, and it refuses a tag that already has a
+release.
+
+### A published version cannot be taken back
+
+Deleting a tag removes it from GitHub and from nothing else.
+`proxy.golang.org` records which commit a version is at the moment it first
+serves it, and `sum.golang.org` is an append-only transparency log of that
+tree's hash. Both are public and permanent:
+
+```bash
+curl https://proxy.golang.org/github.com/nibir1/typesafe-go/@v/v1.0.0.info
+curl https://sum.golang.org/lookup/github.com/nibir1/typesafe-go@v1.0.0
+```
+
+So re-tagging a version at a different commit does not give you a second
+attempt at it. It gives you a repository that disagrees with the proxy forever,
+and a `SECURITY ERROR: checksum mismatch` for everyone who already fetched the
+version — which reads as a supply-chain attack, not as a tidy-up.
+
+If a release went out incomplete, finish it where you can and release the fix
+as the next patch version. Versions are cheap; trust in the checksum database
+is not.
+
 ### Why there is no `go.work`
 
 A workspace would let local builds resolve the submodules without any

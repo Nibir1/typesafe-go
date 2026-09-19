@@ -30,6 +30,10 @@ on:
         description: Re-record every cassette and open a pull request
         type: boolean
         default: false
+      publish_tag:
+        description: "Recovery only: build and publish the release for a tag that is already pushed, e.g. v1.0.0"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -67,6 +71,7 @@ jobs:
           CRON: ${{ github.event.schedule }}
           REFRESH: ${{ inputs.refresh_cassettes }}
           REPO: ${{ github.repository }}
+          PUBLISH_TAG: ${{ inputs.publish_tag }}
         run: |
           is() { echo "$1=$2" >> "$GITHUB_OUTPUT"; }
 
@@ -100,18 +105,24 @@ jobs:
           own_repo=false
           [ "$(echo "$REPO" | tr '[:upper:]' '[:lower:]')" = "nibir1/typesafe-go" ] && own_repo=true
 
+          # A recovery dispatch republishes one existing tag. It is not an
+          # occasion to spend the API key or to re-check the served OpenAPI
+          # document, so the scheduled work stays off.
+          dispatch=false
+          [ "$EVENT" = workflow_dispatch ] && [ -z "$PUBLISH_TAG" ] && dispatch=true
+
           live=false
-          if [ "$own_repo" = true ] && { [ "$CRON" = "17 6 * * *" ] || [ "$EVENT" = workflow_dispatch ]; }; then
+          if [ "$own_repo" = true ] && { [ "$CRON" = "17 6 * * *" ] || [ "$dispatch" = true ]; }; then
             live=true
           fi
 
           drift=false
-          if [ "$CRON" = "41 6 * * 1" ] || [ "$EVENT" = workflow_dispatch ]; then
+          if [ "$CRON" = "41 6 * * 1" ] || [ "$dispatch" = true ]; then
             drift=true
           fi
 
           refresh=false
-          if [ "$own_repo" = true ] && [ "$EVENT" = workflow_dispatch ] && [ "$REFRESH" = true ]; then
+          if [ "$own_repo" = true ] && [ "$dispatch" = true ] && [ "$REFRESH" = true ]; then
             refresh=true
           fi
 
@@ -795,9 +806,22 @@ jobs:
           - integrations/mcp
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      # Current stable, deliberately, and NOT the module's declared floor.
+      #
+      # govulncheck reports standard-library vulnerabilities for whichever
+      # toolchain it runs under. Scanning the core with its floor of Go 1.23.0
+      # reported four unpatched stdlib CVEs and failed the whole release —
+      # none of them in this code, all of them fixed by using a current
+      # toolchain. The floor is a compatibility promise about the API, not an
+      # instruction to build with an unpatched compiler.
+      #
+      # What this job answers is "does this library call a known-vulnerable
+      # function", and the answer must not depend on how old a toolchain the
+      # module still supports. Keep a patched toolchain is documentation, not
+      # a release gate.
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version-file: ${{ matrix.module }}/go.mod
+          go-version: stable
       - name: govulncheck
         working-directory: ${{ matrix.module }}
         run: |
@@ -894,3 +918,120 @@ jobs:
               echo "::warning::$path is not on the proxy yet"
             fi
           done
+
+  # ---------------------------------------------------------------------------
+  # Recovery: publish the release for a tag that is already pushed.
+  #
+  # A tag run uses the workflow file from *that tag's own commit*. When the bug
+  # is in the workflow rather than in the code, re-running the tag re-runs the
+  # bug, and moving the tag is not an option: the module proxy records which
+  # commit a version is at the moment it first serves it, permanently, and the
+  # checksum database records the hash of that tree. Re-pointing a tag makes
+  # the repository and the proxy disagree forever, and anyone who already
+  # fetched the version sees a checksum mismatch, which reads as a supply-chain
+  # attack rather than as a mistake.
+  #
+  # So this path leaves the tag exactly where it is and only adds what was
+  # never published: the release page, the archives, the signatures and the
+  # SBOM. It runs from the default branch, so it uses the *fixed* workflow,
+  # and checks out the tag's tree to build from.
+  #
+  # Deliberately narrow. It needs an input a human types, it refuses anything
+  # that is not a root tag, and it refuses a tag that already has a release.
+  # ---------------------------------------------------------------------------
+  republish:
+    name: Publish the release for ${{ inputs.publish_tag }}
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_tag != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write      # create the release and upload assets
+      id-token: write      # keyless signing and provenance, via OIDC
+      attestations: write  # build provenance attestations
+    env:
+      # Never interpolated straight into a shell. An input is untrusted text.
+      TAG: ${{ inputs.publish_tag }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ inputs.publish_tag }}
+          fetch-depth: 0
+
+      - name: Assert this is a root tag, and that HEAD is on it
+        run: |
+          case "$TAG" in
+            v[0-9]*) ;;
+            */v*) echo "::error::$TAG is a submodule tag; there is nothing to build"; exit 1 ;;
+            *)    echo "::error::$TAG is not a version tag"; exit 1 ;;
+          esac
+          # goreleaser derives the version from the tag on HEAD. If the
+          # checkout did not land exactly on it, stop rather than publish
+          # something labelled with a version it was not built from.
+          on_head=$(git tag --points-at HEAD)
+          echo "$on_head" | grep -qx "$TAG" \
+            || { echo "::error::HEAD is not at $TAG (tags here: $on_head)"; exit 1; }
+          echo "Building $TAG at $(git rev-parse HEAD)."
+
+      - name: Refuse to overwrite an existing release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "::error::$TAG already has a release; this job only fills in a missing one"
+            exit 1
+          fi
+          echo "No release exists for $TAG yet."
+
+      # The gate that failed, re-run correctly. Current stable, for the reason
+      # spelled out on the vulncheck job above: the module's floor is a promise
+      # about its API, not an instruction to scan with an unpatched compiler.
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: stable
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+
+      - run: go mod verify
+
+      # The tag's own run passed the full gate before it failed at govulncheck,
+      # but binaries should not be published on the strength of a remembered
+      # green tick.
+      - run: go test ./...
+
+      - name: Extract the release notes
+        run: |
+          awk -v ver="## ${TAG}" '
+            $0 == ver { found = 1; next }
+            found && /^## v[0-9]/ { exit }
+            found { print }
+          ' Release_Notes.md > /tmp/release-notes.md
+          if [ ! -s /tmp/release-notes.md ]; then
+            echo "::error::no notes for ${TAG} in Release_Notes.md"; exit 1
+          fi
+          echo "Release body: $(wc -l < /tmp/release-notes.md) lines"
+          cat /tmp/release-notes.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Install syft, for the SBOM
+        uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+
+      - name: GoReleaser
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          version: "~> v2"
+          args: release --clean --release-notes=/tmp/release-notes.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COSIGN_EXPERIMENTAL: "1"
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*.tar.gz,dist/*.zip

@@ -21,21 +21,33 @@ cd "$ROOT"
 readonly NOTES="Release_Notes.md"
 readonly REMOTE="${REMOTE:-origin}"
 
-# Submodules, in dependency order. nethttp is imported by the three framework
-# integrations, so it has to resolve before they can.
-readonly SUBMODULES=(
+# Submodules, in two tiers.
+#
+# TIER1 depends only on the root, which is published before any of this runs.
+# TIER2 imports integrations/nethttp, so nethttp's tag has to exist on the
+# remote before gin, echo and fiber can even resolve their own go.mod.
+#
+# The first version of this script kept one flat list, pinned everything,
+# tested everything, and only tagged at the very end. gin failed with
+# "unknown revision integrations/nethttp/v1.0.0" — correctly, because that tag
+# did not exist yet. The comment above the list said nethttp had to be tagged
+# first; the code did not do it.
+readonly TIER1=(
   lint
   typesafecache
   typesafeotel
   typesafeprom
   integrations/nethttp
-  integrations/gin
-  integrations/echo
-  integrations/fiber
   integrations/langchaingo
   integrations/temporal
   integrations/mcp
 )
+readonly TIER2=(
+  integrations/gin
+  integrations/echo
+  integrations/fiber
+)
+readonly SUBMODULES=("${TIER1[@]}" "${TIER2[@]}")
 
 if [[ -t 1 ]]; then
   readonly B=$'\033[1m' R=$'\033[31m' G=$'\033[32m' Y=$'\033[33m' D=$'\033[2m' O=$'\033[0m'
@@ -62,6 +74,14 @@ would() {
 
 VERSION="${VERSION:-}"
 CONFIRM="${CONFIRM:-no}"
+
+# RESUME=submodules picks up after the root tag is already published.
+#
+# The root tag is the irreversible half. Once it is on the proxy, re-running
+# from the top is both impossible (the tag exists) and wrong (it would re-do
+# the one step that cannot be re-done). Anything after it is retryable, so it
+# needs to be reachable on its own.
+RESUME="${RESUME:-}"
 
 # With no version, take the newest section in the notes. Writing the notes
 # first and deriving the version from them means the two cannot disagree.
@@ -103,10 +123,15 @@ command -v git > /dev/null || die "git is not installed"
 git rev-parse --is-inside-work-tree > /dev/null 2>&1 || die "not a git repository"
 
 if [[ -n "$(git status --porcelain)" ]]; then
-  git status --short | head -10
-  die "the working tree is not clean; commit or stash first"
+  if [[ "$RESUME" == "submodules" ]]; then
+    warn "the tree is dirty; on a resume that is expected (pinned go.mod files)"
+  else
+    git status --short | head -10
+    die "the working tree is not clean; commit or stash first"
+  fi
+else
+  ok "working tree is clean"
 fi
-ok "working tree is clean"
 
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 if [[ "$BRANCH" != "main" ]]; then
@@ -114,13 +139,21 @@ if [[ "$BRANCH" != "main" ]]; then
   [[ "$CONFIRM" == "yes" ]] && die "refusing to release from '$BRANCH'; check out main"
 fi
 
-if git rev-parse "$VERSION" > /dev/null 2>&1; then
-  die "tag $VERSION already exists locally"
+if [[ "$RESUME" == "submodules" ]]; then
+  git ls-remote --tags --exit-code "$REMOTE" "refs/tags/$VERSION" > /dev/null 2>&1 \
+    || die "RESUME=submodules but $VERSION is not on $REMOTE; run the full release"
+  ok "$VERSION is already published; resuming at the submodules"
+else
+  if git rev-parse "$VERSION" > /dev/null 2>&1; then
+    die "tag $VERSION already exists locally"
+  fi
+  if git ls-remote --tags --exit-code "$REMOTE" "refs/tags/$VERSION" > /dev/null 2>&1; then
+    die "tag $VERSION already exists on $REMOTE — a published version cannot be replaced.
+     If the root tag is published and only the submodules are missing, resume with:
+       make release VERSION=$VERSION CONFIRM=yes RESUME=submodules"
+  fi
+  ok "$VERSION is not taken"
 fi
-if git ls-remote --tags --exit-code "$REMOTE" "refs/tags/$VERSION" > /dev/null 2>&1; then
-  die "tag $VERSION already exists on $REMOTE — a published version cannot be replaced"
-fi
-ok "$VERSION is not taken"
 
 if ! grep -q "\[${VERSION#v}\]" CHANGELOG.md; then
   warn "CHANGELOG.md has no [${VERSION#v}] entry"
@@ -169,7 +202,12 @@ fi
 
 step "Confirm"
 
-printf '  Pushing %s%s%s to %s publishes it permanently.\n' "$B" "$VERSION" "$O" "$REMOTE"
+if [[ "$RESUME" == "submodules" ]]; then
+  printf '  Resuming %s%s%s: the root tag is already published. This will tag\n' "$B" "$VERSION" "$O"
+  printf '  the %d submodules, which is also permanent.\n\n' "${#SUBMODULES[@]}"
+else
+  printf '  Pushing %s%s%s to %s publishes it permanently.\n' "$B" "$VERSION" "$O" "$REMOTE"
+fi
 printf '  The Go module proxy caches a version within minutes, and deleting the\n'
 printf '  tag afterwards does not unpublish it.\n\n'
 printf '  Type the version to continue: '
@@ -177,6 +215,8 @@ read -r TYPED
 [[ "$TYPED" == "$VERSION" ]] || die "got '$TYPED', expected '$VERSION' — nothing was done"
 
 # --- root tag -----------------------------------------------------------------
+
+if [[ "$RESUME" != "submodules" ]]; then
 
 step "Tagging the root module"
 
@@ -209,31 +249,76 @@ fi
 
 # --- submodules ---------------------------------------------------------------
 
+fi
+
 step "Re-pointing the submodules"
 
 python3 scripts/release_prep.py --version "$VERSION"
 
-for module in "${SUBMODULES[@]}"; do
-  printf '  %s%s%s\n' "$D" "$module" "$O"
-  ( cd "$module" && go mod tidy && go build ./... && go test -count=1 ./... > /dev/null ) \
-    || die "$module failed after re-pointing; the root tag is published, fix and retry"
-done
-ok "all ${#SUBMODULES[@]} submodules build and test against $VERSION"
+# tier_prepare tidies, builds and tests the modules in a tier.
+tier_prepare() {
+  local module
+  for module in "$@"; do
+    printf '  %s%s%s\n' "$D" "$module" "$O"
+    ( cd "$module" && go mod tidy && go build ./... && go test -count=1 ./... > /dev/null ) \
+      || die "$module failed after re-pointing; the root tag is published. Fix, then resume with RESUME=submodules"
+  done
+}
+
+# tier_tag commits nothing; it only tags what is already committed.
+tier_tag() {
+  local module tag
+  for module in "$@"; do
+    tag="$module/$VERSION"
+    if git rev-parse "$tag" > /dev/null 2>&1; then
+      warn "$tag already exists, skipping"
+      continue
+    fi
+    would git tag -a "$tag" -m "$tag"
+    would git push "$REMOTE" "$tag"
+    ok "$tag"
+  done
+}
+
+step "Tier 1: modules that depend only on the root"
+tier_prepare "${TIER1[@]}"
 
 python3 scripts/check_release_ready.py --version "$VERSION" --allow-dirty \
   || die "release readiness check failed"
 
 step "Committing the pinned go.mod files"
-would git commit -am "Pin submodules to $VERSION"
+would git add -A
+would git commit -m "Pin submodules to $VERSION"
 would git push "$REMOTE" HEAD
 
-step "Tagging the submodules"
-for module in "${SUBMODULES[@]}"; do
-  tag="$module/$VERSION"
-  would git tag -a "$tag" -m "$tag"
-  would git push "$REMOTE" "$tag"
-  ok "$tag"
+step "Tagging tier 1"
+tier_tag "${TIER1[@]}"
+
+step "Waiting for integrations/nethttp on the proxy"
+note "gin, echo and fiber cannot resolve their own go.mod until it is served"
+
+NETHTTP_OK=no
+for attempt in $(seq 1 30); do
+  if GOPROXY=https://proxy.golang.org GOFLAGS= \
+     go list -m "github.com/nibir1/typesafe-go/integrations/nethttp@$VERSION" > /dev/null 2>&1; then
+    NETHTTP_OK=yes
+    ok "the proxy is serving integrations/nethttp@$VERSION (after ${attempt} check(s))"
+    break
+  fi
+  sleep 10
 done
+[[ "$NETHTTP_OK" == "yes" ]] || die "nethttp is not on the proxy yet; resume with RESUME=submodules once it is"
+
+step "Tier 2: the framework integrations"
+tier_prepare "${TIER2[@]}"
+
+step "Committing tier 2"
+would git add -A
+would git commit -m "Pin the framework integrations to $VERSION"
+would git push "$REMOTE" HEAD
+
+step "Tagging tier 2"
+tier_tag "${TIER2[@]}"
 
 # --- back to development ------------------------------------------------------
 
