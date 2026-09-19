@@ -70,6 +70,10 @@ they exist because this is the property the whole layout is built around.
 **Every exported symbol has a doc comment.** `make docs-check` fails otherwise.
 Say *why*, not *what* — the signature already says what.
 
+**Line endings are LF.** `.gitattributes` enforces it. Go source, shell scripts and
+anything compared byte for byte all need it, and a CRLF checkout on Windows is how a
+generated-file drift test fails on one platform out of seven.
+
 **No credential reaches a committed file.** `make secrets` scans every
 `testdata` tree. If you record a cassette, run it before you commit.
 

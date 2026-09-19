@@ -428,7 +428,14 @@ if string(got) != string(want) {
 ```
 
 Generate into a temp file rather than over the committed one — a failing test must not
-leave the tree already changed to match itself. `internal/genexample` does this, then
+leave the tree already changed to match itself.
+
+**Normalise line endings before comparing.** A generator emits LF; git on Windows checks
+out CRLF unless told otherwise, so a byte comparison reports the file as out of date on
+Windows and only on Windows. `.gitattributes` pins LF everywhere and is the real fix, but
+it does not renormalise a working tree that already exists — so the comparison strips
+`\r` as well. This repository found that the way everyone does: a green matrix with one
+red Windows job. `internal/genexample` does this, then
 round-trips the generated questions against a recorded cassette, so the assertion covers
 the whole path from enum to wire and back.
 

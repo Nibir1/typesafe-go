@@ -1,0 +1,24 @@
+# Line endings are LF everywhere, including on Windows.
+#
+# Without this, git on Windows checks out CRLF by default (core.autocrlf=true).
+# That breaks anything comparing a committed file against freshly generated
+# bytes: typesafe-gen emits LF, the working copy has CRLF, and the drift test
+# reports a file as out of date on Windows and only on Windows. That is exactly
+# how this was found — every other platform in the matrix passed.
+#
+# Go source is LF by convention, cassettes and fixtures are compared byte for
+# byte, and a shell script with CRLF does not run. There is no file here that
+# wants CRLF.
+* text=auto eol=lf
+
+# Executable scripts, so the bit survives a checkout.
+*.sh text eol=lf
+*.py text eol=lf
+
+# Generated output. Marking it keeps diffs collapsed by default on GitHub and
+# keeps it out of language statistics; it is still reviewed like any file.
+*_typesafe.go linguist-generated=true
+
+# Recorded API traffic. Large, mechanical, and not written by hand.
+*.jsonl linguist-generated=true
+testdata/spec/openapi.json linguist-vendored=true

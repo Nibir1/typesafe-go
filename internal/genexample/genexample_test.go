@@ -1,6 +1,7 @@
 package genexample_test
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"os"
@@ -57,9 +58,9 @@ func TestGeneratedOutputIsCurrent(t *testing.T) {
 		t.Fatalf("typesafe-gen: %v\n%s", err, out)
 	}
 
-	want := mustRead(t, fresh)
+	want := normalizeEOL(mustRead(t, fresh))
 	committed := filepath.Join(pkgDir, "ticketquestions_typesafe.go")
-	got := mustRead(t, committed)
+	got := normalizeEOL(mustRead(t, committed))
 
 	if string(got) != string(want) {
 		t.Errorf("%s is out of date. Regenerate it:\n"+
@@ -67,6 +68,21 @@ func TestGeneratedOutputIsCurrent(t *testing.T) {
 			"--- checked in ---\n%s\n--- freshly generated ---\n%s",
 			committed, got, want)
 	}
+}
+
+// normalizeEOL makes the comparison independent of how git checked the file
+// out.
+//
+// The generator emits LF. Git on Windows checks out CRLF unless told otherwise,
+// so a byte comparison reported this file as out of date on Windows and only on
+// Windows — the rest of the matrix was green, which is what made it confusing.
+//
+// .gitattributes now pins LF everywhere and is the real fix. This stays because
+// .gitattributes does not renormalize a working tree that already exists: a
+// contributor who cloned before it was added still has CRLF on disk, and a test
+// that fails for them teaches nothing about the generator.
+func normalizeEOL(b []byte) []byte {
+	return bytes.ReplaceAll(b, []byte("\r\n"), []byte("\n"))
 }
 
 func mustRead(t *testing.T, path string) []byte {
