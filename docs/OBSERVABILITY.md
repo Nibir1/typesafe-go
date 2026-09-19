@@ -215,3 +215,8 @@ works.
 in CI: the checker reads metric names out of `typesafeprom/prom.go`, so renaming
 a metric and forgetting the dashboard is a build failure rather than a panel
 that quietly reads zero.
+
+---
+
+See the [user manual](MANUAL.md#10-going-to-production) for the production checklist
+this fits into.

@@ -178,3 +178,8 @@ benchstat old.txt new.txt
 CI runs the benchmarks on every push and fails on a regression beyond the
 threshold in `.github/workflows/ci.yml`. A benchmark that only ever runs
 locally stops being true within a month.
+
+---
+
+See [LIMITS.md](LIMITS.md) for the limits that actually bind, and the [user
+manual](MANUAL.md) for everyday use.

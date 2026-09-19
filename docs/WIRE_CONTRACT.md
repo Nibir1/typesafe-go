@@ -450,7 +450,7 @@ make fixtures    # do all golden fixtures still satisfy the schema?
 make live        # does the live API still match every fixture's shape?
 ```
 
-`.github/workflows/contract-drift.yml` runs all three weekly and opens a failure when the
+`.github/workflows/ci.yml` runs all three on its Monday schedule and fails when the
 contract moves. A failure there is not a bug in this repository — it means the API
 changed, or our reading of it was wrong. Both warrant investigation before anything else
 is built on top.

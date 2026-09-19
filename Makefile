@@ -50,7 +50,7 @@ help: ## Show this help
 # --- the gates ---------------------------------------------------------------
 
 .PHONY: verify
-verify: tidy-check fmt-check integrations-fmt vet vet-integration deps deps-graph test-race contract fixtures secrets docs-check links licenses bench-check dashboards lint-module submodules integrations examples analyzers ## Full offline gate (run before pushing)
+verify: tidy-check fmt-check integrations-fmt vet vet-integration deps deps-graph test-race contract fixtures secrets docs-check links mermaid licenses bench-check dashboards lint-module submodules integrations examples analyzers ## Full offline gate (run before pushing)
 	@printf '\n$(OK)$(BOLD)  All offline checks passed.$(OFF)\n'
 	@printf '$(DIM)  `make live` additionally exercises the real API.$(OFF)\n\n'
 
@@ -183,6 +183,10 @@ bench-check: ## Run every benchmark once, to prove they still build
 
 # --- release ------------------------------------------------------------------
 
+.PHONY: release
+release: ## Cut a release (dry run; add CONFIRM=yes to do it for real)
+	@VERSION="$(VERSION)" CONFIRM="$(CONFIRM)" REMOTE="$(REMOTE)" bash scripts/release.sh
+
 .PHONY: release-check
 release-check: ## Assert the tree can be released (VERSION=v1.2.3 to check a version)
 	$(call step,release readiness)
@@ -208,6 +212,11 @@ release-revert: ## Restore development replaces after a release
 licenses: ## Assert every third-party licence permits Apache-2.0 redistribution
 	$(call step,licence audit)
 	@python3 scripts/check_licenses.py
+
+.PHONY: mermaid
+mermaid: ## Sanity-check the mermaid diagrams in the docs
+	$(call step,mermaid diagrams)
+	@python3 scripts/check_mermaid.py
 
 .PHONY: links
 links: ## Assert every relative link in the docs resolves

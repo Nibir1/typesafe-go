@@ -1,33 +1,131 @@
-name: ci
-
-# Runs the offline gate on every supported Go version and platform.
+# One workflow for everything: tests, linting, docs, drift detection, the live
+# API, and releases.
 #
-# Nothing here needs an API key or network access to TypeSafe. The live-API
-# checks live in contract-drift.yml, gated on a secret.
+# It was five files. They shared most of their setup, drifted apart in the
+# parts they did not share — the secret scan in the drift workflow still used
+# a narrow two-directory search that `make secrets` had outgrown months
+# earlier — and nobody reading one of them could tell what the others did.
 #
-# The version matrix exists because go.mod declares a 1.23 floor while
-# development happens on the newest toolchain. An unverified floor rots
-# silently: a stdlib symbol or language feature from a later release compiles
-# fine locally and breaks for everyone on the version we promised to support.
+# The cost of merging is a long file. The benefit is that the whole pipeline is
+# one thing you can read top to bottom, and a change to shared setup happens
+# once. The `meta` job computes what kind of run this is, so every other job
+# states its condition in one readable line instead of repeating an expression
+# nobody checks.
+name: CI
 
 on:
   push:
     branches: [main]
+    tags:
+      - "v*"       # the root module
+      - "*/v*"     # a submodule, e.g. typesafecache/v1.0.0
+      - "*/*/v*"   # a nested one, e.g. integrations/gin/v1.0.0
   pull_request:
+  schedule:
+    - cron: "17 6 * * *"   # daily — the live API still matches the contract
+    - cron: "41 6 * * 1"   # Mondays — the served OpenAPI document has not moved
   workflow_dispatch:
+    inputs:
+      refresh_cassettes:
+        description: Re-record every cassette and open a pull request
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+env:
+  # Nothing in CI may edit a go.mod. A build that silently adds a dependency is
+  # the failure the zero-dependency guarantee exists to prevent.
+  GOFLAGS: -mod=readonly
+  GOLANGCI_VERSION: v2.13.2
+  PYTHON_VERSION: "3.13"
 
 jobs:
-  # The floor and every release up to current stable. Failing here means the
-  # go directive in go.mod is a promise we are not keeping.
+  # ---------------------------------------------------------------------------
+  # What kind of run is this?
+  #
+  # Computed once so every job below reads as a sentence rather than as a
+  # boolean expression repeated fifteen times with one of them subtly wrong.
+  # ---------------------------------------------------------------------------
+  meta:
+    name: Classify this run
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.f.outputs.code }}
+      tag: ${{ steps.f.outputs.tag }}
+      root_tag: ${{ steps.f.outputs.root_tag }}
+      pr: ${{ steps.f.outputs.pr }}
+      live: ${{ steps.f.outputs.live }}
+      drift: ${{ steps.f.outputs.drift }}
+      refresh: ${{ steps.f.outputs.refresh }}
+    steps:
+      - id: f
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          CRON: ${{ github.event.schedule }}
+          REFRESH: ${{ inputs.refresh_cassettes }}
+          REPO: ${{ github.repository }}
+        run: |
+          is() { echo "$1=$2" >> "$GITHUB_OUTPUT"; }
+
+          tag=false; root_tag=false
+          case "$REF" in
+            refs/tags/*/v*) tag=true ;;
+            refs/tags/v*)   tag=true; root_tag=true ;;
+          esac
+
+          # The ordinary code gate: a branch push or a pull request, never a tag.
+          code=false
+          if [ "$tag" = false ] && { [ "$EVENT" = push ] || [ "$EVENT" = pull_request ]; }; then
+            code=true
+          fi
+          # A tag also runs the gate, before anything is built or published.
+          [ "$tag" = true ] && code=true
+
+          pr=false
+          [ "$EVENT" = pull_request ] && pr=true
+
+          # Anything needing the API key only runs where the secret exists.
+          own_repo=false
+          [ "$REPO" = "nibir1/typesafe-go" ] && own_repo=true
+
+          live=false
+          if [ "$own_repo" = true ] && { [ "$CRON" = "17 6 * * *" ] || [ "$EVENT" = workflow_dispatch ]; }; then
+            live=true
+          fi
+
+          drift=false
+          if [ "$CRON" = "41 6 * * 1" ] || [ "$EVENT" = workflow_dispatch ]; then
+            drift=true
+          fi
+
+          refresh=false
+          if [ "$own_repo" = true ] && [ "$EVENT" = workflow_dispatch ] && [ "$REFRESH" = true ]; then
+            refresh=true
+          fi
+
+          is code "$code"; is tag "$tag"; is root_tag "$root_tag"
+          is pr "$pr"; is live "$live"; is drift "$drift"; is refresh "$refresh"
+
+          {
+            echo "| | |"; echo "|---|---|"
+            echo "| event | \`$EVENT\` |"; echo "| ref | \`$REF\` |"
+            echo "| code gate | \`$code\` |"; echo "| tag | \`$tag\` |"
+            echo "| live API | \`$live\` |"; echo "| drift | \`$drift\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # The code gate
+  # ---------------------------------------------------------------------------
+
+  # The floor and every release up to current stable. Failing here means the go
+  # directive in go.mod is a promise we are not keeping.
   test:
     name: go${{ matrix.go }} / ${{ matrix.os }}
+    needs: meta
+    if: needs.meta.outputs.code == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -35,36 +133,26 @@ jobs:
         os: [ubuntu-latest]
         go: ["1.23", "1.24", "1.25", "1.26", "1.27"]
         include:
-          # Current stable on the other platforms developers actually use.
-          # A full 5x3 matrix would spend most of its time re-proving that Go
-          # is portable; these catch the path and filesystem assumptions that
-          # are the realistic cross-platform risk.
+          # Current stable on the other platforms developers actually use. A
+          # full matrix would spend most of its time re-proving that Go is
+          # portable; these catch the path and filesystem assumptions that are
+          # the realistic cross-platform risk.
           - os: macos-latest
             go: "1.27"
           - os: windows-latest
             go: "1.27"
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: ${{ matrix.go }}
           check-latest: true
 
-      - name: Report the resolved toolchain
-        run: go version
-
-      - name: Build
-        run: go build ./...
-
-      - name: Vet
-        run: go vet ./...
-
-      - name: Vet (integration tag)
-        run: go vet -tags=integration ./...
-
-      - name: Test
-        run: go test -count=1 -timeout 300s ./...
+      - run: go version
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go vet -tags=integration ./...
+      - run: go test -count=1 -timeout 300s ./...
 
       # The race detector is slower and needs cgo; one platform is enough to
       # catch a data race, and ubuntu is where it is cheapest.
@@ -72,10 +160,12 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: go test -race -count=1 -timeout 600s ./...
 
-  # Guards principle P1. A dependency can arrive through a transitive import
-  # that nobody notices in review.
+  # Guards the property the whole module layout exists to protect. A dependency
+  # can arrive through a transitive import nobody notices in review.
   no-dependencies:
     name: Zero third-party dependencies
+    needs: meta
+    if: needs.meta.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
@@ -96,53 +186,120 @@ jobs:
       - name: Assert go.mod is tidy
         run: |
           cp go.mod /tmp/go.mod.orig
-          go mod tidy
+          GOFLAGS= go mod tidy
           if ! diff -u /tmp/go.mod.orig go.mod; then
             echo "::error::go.mod is not tidy — run: make tidy"
             exit 1
           fi
 
-  # The optional modules. They are separate modules precisely so the core's
-  # dependency graph stays empty, so they need their own jobs — `go test ./...`
-  # at the root does not reach them.
-  submodules:
-    name: Submodule ${{ matrix.module }}
+  format:
+    name: gofmt
+    needs: meta
+    if: needs.meta.outputs.code == 'true'
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        module: [typesafecache, typesafeotel, typesafeprom]
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          # Each submodule declares its own floor, which is higher than the
-          # core's wherever a dependency forces it. Reading the version from
-          # the module keeps this job honest when one of them moves.
+          go-version: stable
+      - name: Check formatting, every module
+        run: |
+          out=$(gofmt -l . 2>/dev/null)
+          if [ -n "$out" ]; then
+            echo "::error::Unformatted files — run: make fmt"
+            echo "$out"
+            exit 1
+          fi
+          echo "All files formatted."
+
+  lint:
+    name: golangci-lint (${{ matrix.module }})
+    needs: meta
+    if: needs.meta.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - "."
+          - lint
+          - typesafecache
+          - typesafeotel
+          - typesafeprom
+          - integrations/nethttp
+          - integrations/gin
+          - integrations/echo
+          - integrations/fiber
+          - integrations/langchaingo
+          - integrations/temporal
+          - integrations/mcp
+          - examples
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
           go-version-file: ${{ matrix.module }}/go.mod
+      - uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9 # v8.0.0
+        with:
+          version: ${{ env.GOLANGCI_VERSION }}
+          working-directory: ${{ matrix.module }}
+          # One config at the repository root governs every module, so a rule
+          # cannot hold in one place and not another.
+          args: --config=${{ github.workspace }}/.golangci.yml
 
-      - name: Vet
-        working-directory: ${{ matrix.module }}
+  lint-config:
+    name: Lint config is valid
+    needs: meta
+    if: needs.meta.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: stable
+      # A broken config silently disables a linter rather than failing.
+      - uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9 # v8.0.0
+        with:
+          version: ${{ env.GOLANGCI_VERSION }}
+          args: config verify
+
+  # Each optional module has its own go.mod, so `go test ./...` at the root does
+  # not reach any of them. That is the whole point of the split.
+  submodules:
+    name: Submodule ${{ matrix.module }}
+    needs: meta
+    if: needs.meta.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [typesafecache, typesafeotel, typesafeprom, lint]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          # Each declares its own floor, higher than the core's wherever a
+          # dependency forces it. Reading it from the module keeps this honest
+          # when one moves.
+          go-version-file: ${{ matrix.module }}/go.mod
+      - working-directory: ${{ matrix.module }}
         run: go vet ./...
-
-      - name: Test
-        working-directory: ${{ matrix.module }}
+      - working-directory: ${{ matrix.module }}
         run: go test -race -count=1 ./...
-
       - name: Assert the module is tidy
         working-directory: ${{ matrix.module }}
         run: |
           cp go.mod /tmp/go.mod.orig
-          go mod tidy
+          GOFLAGS= go mod tidy
           if ! diff -u /tmp/go.mod.orig go.mod; then
             echo "::error::${{ matrix.module }}/go.mod is not tidy"
             exit 1
           fi
 
-  # The integration modules. Each has its own go.mod so that importing the SDK
-  # never drags in a web framework, LangChainGo, Temporal or the MCP SDK.
   integrations:
     name: Integration ${{ matrix.module }}
+    needs: meta
+    if: needs.meta.outputs.code == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -153,61 +310,216 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: integrations/${{ matrix.module }}/go.mod
-
-      - name: Vet
-        working-directory: integrations/${{ matrix.module }}
+      - working-directory: integrations/${{ matrix.module }}
         run: go vet ./...
-
-      - name: Test
-        working-directory: integrations/${{ matrix.module }}
+      - working-directory: integrations/${{ matrix.module }}
         run: go test -race -count=1 ./...
-
       - name: Assert the module is tidy
         working-directory: integrations/${{ matrix.module }}
         run: |
           cp go.mod /tmp/go.mod.orig
-          go mod tidy
+          GOFLAGS= go mod tidy
           if ! diff -u /tmp/go.mod.orig go.mod; then
             echo "::error::integrations/${{ matrix.module }}/go.mod is not tidy"
             exit 1
           fi
 
-  # The deploy example is the only place all three optional modules are shown
-  # composed. It is not tested, but it must compile, or the one worked example
-  # of the full wiring rots.
+  # Replayed against committed cassettes: no key, no network. An example that
+  # stops compiling is caught here rather than by the next person who copies it.
+  examples:
+    name: Examples
+    needs: meta
+    if: needs.meta.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: examples/go.mod
+      - working-directory: examples
+        run: go vet ./...
+      - working-directory: examples
+        run: go test -count=1 ./...
+
+  # The only place all three optional modules are shown composed. Not tested,
+  # but it must compile, or the one worked example of the full wiring rots.
   deploy-example:
     name: Deploy example builds
+    needs: meta
+    if: needs.meta.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: deploy/example/go.mod
-      - name: Build
-        working-directory: deploy/example
+      - working-directory: deploy/example
         run: go build ./... && go vet ./...
 
-  # Benchmarks, compared against the base branch on the same runner.
-  #
-  # A committed baseline would be worthless: benchmark numbers belong to the
-  # machine that produced them, and a figure from a laptop says nothing about a
-  # CI runner. Both sides are measured here, in this job, and only the ratio is
-  # used.
-  benchmarks:
-    name: Benchmark regression
+  docs:
+    name: Documentation
+    needs: meta
+    if: needs.meta.outputs.code == 'true'
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-        with:
-          fetch-depth: 0
-
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: stable
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: "3.13"
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Every exported symbol is documented
+        run: python3 scripts/check_docs.py
+
+      # A broken cross-reference is the least visible documentation defect:
+      # nothing fails, the reader just lands nowhere.
+      - name: Every relative link resolves
+        run: python3 scripts/check_links.py
+
+      # A diagram that fails to parse renders as a red error box on GitHub,
+      # which is worse than no diagram.
+      - name: Every mermaid diagram parses
+        run: python3 scripts/check_mermaid.py
+
+      - name: Release notes exist for the current version
+        run: |
+          # A release whose notes are missing is a release nobody can read, and
+          # the time to find that out is not while cutting it.
+          ver=$(grep -m1 -oE '^## v[0-9]+\.[0-9]+\.[0-9]+' Release_Notes.md | sed 's/^## //')
+          if [ -z "$ver" ]; then
+            echo "::error::Release_Notes.md has no '## vX.Y.Z' section"; exit 1
+          fi
+          echo "Release_Notes.md describes $ver"
+
+  licenses:
+    name: Licence audit
+    needs: meta
+    if: needs.meta.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: stable
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      # Reads the licence of every module the build actually compiles, and
+      # fails on anything that would constrain Apache-2.0 redistribution.
+      - run: python3 scripts/check_licenses.py
+
+  dashboards:
+    name: Grafana dashboards
+    needs: meta
+    if: needs.meta.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      # Validates the JSON, and that every PromQL expression names a metric
+      # typesafeprom actually exports — which is what breaks silently when a
+      # metric is renamed.
+      - run: python3 scripts/check_dashboards.py
+
+  secrets:
+    name: No credential in any committed fixture
+    needs: meta
+    if: needs.meta.outputs.code == 'true' || needs.meta.outputs.drift == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      # `make secrets` walks every testdata tree. The version that used to live
+      # in the drift workflow searched two hard-coded directories and missed a
+      # cassette stored beside the package that used it — which is exactly how
+      # this fails in practice.
+      - run: make secrets
+
+  # Catches assumptions about the width of int. Token arithmetic and score
+  # level indices are the realistic places for one to hide, and 32-bit targets
+  # are where a Go library stops being portable without anyone noticing.
+  cross-compile:
+    name: Cross-compile ${{ matrix.target }}
+    needs: meta
+    if: needs.meta.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: linux/386,     goos: linux,   goarch: "386" }
+          - { target: linux/arm,     goos: linux,   goarch: arm }
+          - { target: windows/amd64, goos: windows, goarch: amd64 }
+          - { target: darwin/arm64,  goos: darwin,  goarch: arm64 }
+          - { target: js/wasm,       goos: js,      goarch: wasm }
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: stable
+      - env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: go build ./...
+
+  coverage:
+    name: Coverage
+    needs: meta
+    if: needs.meta.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: stable
+      - run: go test -covermode=atomic -coverprofile=coverage.out -coverpkg=./... ./...
+      - name: Report
+        run: |
+          total=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}')
+          echo "Total coverage: $total"
+          echo "| | |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| coverage | \`$total\` |" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coverage
+          path: coverage.out
+
+  # Every benchmark must still build. One that only runs locally stops being
+  # true within a month.
+  benchmarks-build:
+    name: Benchmarks build
+    needs: meta
+    if: needs.meta.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: stable
+      - run: go test -run=NONE -bench=. -benchtime=1x ./...
+
+  # Compared against the base branch on the same runner. A committed baseline
+  # belongs to the machine that produced it and says nothing about a CI runner,
+  # so both sides are measured here and only the ratio is used.
+  benchmarks:
+    name: Benchmark regression
+    needs: meta
+    if: needs.meta.outputs.pr == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: stable
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Benchmark the base branch
         run: |
@@ -221,156 +533,349 @@ jobs:
       - name: Compare
         run: python3 scripts/check_benchmarks.py /tmp/base.txt /tmp/head.txt --threshold 10
 
-  # On a push there is nothing to compare against, so the benchmarks are run
-  # only to prove they still compile and pass. A benchmark that stops building
-  # is discovered here rather than the next time someone needs it.
-  benchmarks-build:
-    name: Benchmarks build
+  # ---------------------------------------------------------------------------
+  # The live API and contract drift
+  #
+  # A failure in these is not necessarily a bug in this repository. It means the
+  # API changed, or our reading of it was wrong. Both warrant an issue.
+  # ---------------------------------------------------------------------------
+
+  live:
+    name: Live API
+    needs: meta
+    if: needs.meta.outputs.live == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version: stable
-      - name: Run every benchmark once
-        run: go test -run=NONE -bench=. -benchtime=1x ./...
-
-  # The runnable examples, replayed against their committed cassettes. No key,
-  # no network. An example that stops compiling or stops producing sensible
-  # output is caught here rather than by the next person who copies it.
-  examples:
-    name: Examples
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
-        with:
-          go-version-file: examples/go.mod
-      - name: Vet
-        working-directory: examples
-        run: go vet ./...
-      - name: Replay
-        working-directory: examples
-        run: go test -count=1 ./...
-
-  dashboards:
-    name: Grafana dashboards
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+          go-version-file: go.mod
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: "3.13"
-      # Validates the JSON, and that every PromQL expression names a metric
-      # typesafeprom actually exports — which is what breaks silently when a
-      # metric is renamed.
-      - run: python3 scripts/check_dashboards.py
+          python-version: ${{ env.PYTHON_VERSION }}
 
-  format:
-    name: gofmt
+      - name: Check the key is present
+        id: key
+        env:
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+        run: |
+          if [ -z "$TYPESAFE_API_KEY" ]; then
+            echo "::warning::TYPESAFE_API_KEY is not set; the live suite is skipped"
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Live suite
+        if: steps.key.outputs.present == 'true'
+        env:
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+        run: make live
+
+  schema-drift:
+    name: Served OpenAPI vs vendored copy
+    needs: meta
+    if: needs.meta.outputs.drift == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
-        with:
-          go-version: stable
 
-      - name: Check formatting
+      - name: Fetch the served spec
         run: |
-          out=$(gofmt -l .)
-          if [ -n "$out" ]; then
-            echo "::error::Unformatted files — run: make fmt"
-            echo "$out"
+          curl -fsSL --retry 3 --retry-delay 5 --max-time 60 \
+            https://api.typesafe.ai/openapi.json -o /tmp/served.json
+
+      - name: Report the declared version
+        run: |
+          vendored=$(python3 -c 'import json;print(json.load(open("testdata/spec/openapi.json"))["info"]["version"])')
+          served=$(python3 -c 'import json;print(json.load(open("/tmp/served.json"))["info"]["version"])')
+          {
+            echo "| | version |"; echo "|---|---|"
+            echo "| vendored | \`$vendored\` |"
+            echo "| served | \`$served\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Diff, with key order normalised
+        run: |
+          norm() { python3 -c 'import json,sys;json.dump(json.load(open(sys.argv[1])),sys.stdout,indent=2,sort_keys=True)' "$1"; }
+          norm testdata/spec/openapi.json > /tmp/a.json
+          norm /tmp/served.json           > /tmp/b.json
+          if diff -u /tmp/a.json /tmp/b.json > /tmp/spec.diff; then
+            echo "No schema drift."
+          else
+            echo "::error::The served OpenAPI document differs from the vendored copy."
+            {
+              echo ""; echo "<details><summary>Schema diff</summary>"; echo ""
+              echo '```diff'; head -c 60000 /tmp/spec.diff; echo '```'
+              echo ""; echo "</details>"
+            } >> "$GITHUB_STEP_SUMMARY"
+            head -200 /tmp/spec.diff
             exit 1
           fi
-          echo "All files formatted."
 
-  docs:
-    name: Doc coverage
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
-        with:
-          python-version: "3.13"
-      - run: python3 scripts/check_docs.py
-      # A broken cross-reference is the least visible documentation defect:
-      # nothing fails, the reader just lands nowhere.
-      - run: python3 scripts/check_links.py
-
-  licenses:
-    name: Licence audit
+  behavioral-drift:
+    name: Live API vs golden fixtures
+    needs: meta
+    if: needs.meta.outputs.drift == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: stable
+
+      - name: Replay fixtures against the live API
+        env:
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+        run: |
+          if [ -z "$TYPESAFE_API_KEY" ]; then
+            echo "TYPESAFE_API_KEY is not set; skipping behavioural drift detection." \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          go test -tags=integration -count=1 -v \
+            -run 'TestContractDrift|TestModelsEndpoint|TestObserveErrorEnvelopes' ./...
+
+  # Manual, never automatic. A cassette changing is information — the model
+  # moved, or the contract did — and it should be read by a person rather than
+  # merged by a robot.
+  refresh-cassettes:
+    name: Refresh cassettes
+    needs: meta
+    if: needs.meta.outputs.refresh == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: "3.13"
-      # Reads the licence of every module the build actually compiles, and
-      # fails on anything that would constrain Apache-2.0 redistribution.
-      - run: python3 scripts/check_licenses.py
+          python-version: ${{ env.PYTHON_VERSION }}
 
-  # Catches assumptions about the width of int. Token arithmetic and score
-  # level indices are the realistic places for one to hide, and 32-bit targets
-  # are exactly where a Go library stops being portable without anyone
-  # noticing.
-  cross-compile:
-    name: Cross-compile ${{ matrix.target }}
+      - name: Re-record
+        env:
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+        run: |
+          make examples-record
+          (cd internal/genexample && go test -count=1 -update ./...)
+          (cd integrations/langchaingo && go test -count=1 -update ./...)
+
+      # Before anything is committed: a key in a cassette that reaches a branch
+      # is a key that has to be rotated.
+      - name: Assert no credential was recorded
+        run: make secrets
+
+      - name: Replay the new cassettes
+        run: |
+          make examples
+          go test -count=1 ./internal/genexample/
+          (cd integrations/langchaingo && go test -count=1 ./...)
+
+      - name: Open a pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if git diff --quiet; then
+            echo "No cassette changed."
+            exit 0
+          fi
+          branch="cassettes/refresh-$(date -u +%Y%m%d)"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add -A
+          git commit -m "Refresh cassettes against the live API"
+          git push origin "$branch"
+          gh pr create \
+            --title "Refresh cassettes against the live API" \
+            --body "Automated re-record. **Read the diff.** A changed probability means the model moved; a changed shape means the contract did." \
+            --label cassettes
+
+  # ---------------------------------------------------------------------------
+  # Release
+  #
+  # Only on a tag, and only after the gate above has passed on that exact
+  # commit. A tag is not the place to discover a failing test.
+  # ---------------------------------------------------------------------------
+
+  release-guard:
+    name: Tag is releasable
+    needs: [meta, test, no-dependencies, format, lint, docs, licenses]
+    if: needs.meta.outputs.tag == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Assert nothing unpublishable is being tagged
+        run: |
+          # Every submodule must point at a published version, not a development
+          # replace. Go ignores a replace in a dependency's go.mod, so shipping
+          # one produces a module nobody can build. A root tag is allowed to
+          # precede the re-pointing; a submodule tag is not.
+          case "${GITHUB_REF_NAME}" in
+            */v*) python3 scripts/check_release_ready.py --version "${GITHUB_REF_NAME##*/}" --allow-dirty ;;
+            *)    echo "root tag; submodules are re-pointed after this publishes" ;;
+          esac
+
+      - name: Assert the tag matches the module path
+        run: |
+          # A v2+ tag needs a /v2 suffix on the module path, and getting that
+          # wrong produces a release nobody can `go get`.
+          tag="${GITHUB_REF_NAME##*/}"
+          major="${tag%%.*}"
+          module=$(go list -m)
+          case "$major" in
+            v0|v1)
+              [ "$module" = "github.com/nibir1/typesafe-go" ] || {
+                echo "::error::$tag needs an unsuffixed module path, got $module"; exit 1; }
+              ;;
+            *)
+              [ "$module" = "github.com/nibir1/typesafe-go/$major" ] || {
+                echo "::error::$tag needs the module path to end in /$major, got $module"; exit 1; }
+              ;;
+          esac
+
+      - name: Assert the release notes exist
+        if: needs.meta.outputs.root_tag == 'true'
+        run: |
+          ver="${GITHUB_REF_NAME}"
+          if ! grep -q "^## ${ver}\$" Release_Notes.md; then
+            echo "::error::Release_Notes.md has no '## ${ver}' section"
+            exit 1
+          fi
+          echo "Release notes found for ${ver}."
+
+  vulncheck:
+    name: govulncheck (${{ matrix.module }})
+    needs: meta
+    if: needs.meta.outputs.tag == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - target: linux/386
-            goos: linux
-            goarch: "386"
-          - target: linux/arm64
-            goos: linux
-            goarch: arm64
-          - target: darwin/amd64
-            goos: darwin
-            goarch: amd64
-          - target: windows/amd64
-            goos: windows
-            goarch: amd64
-          - target: js/wasm
-            goos: js
-            goarch: wasm
+        module:
+          - "."
+          - lint
+          - typesafecache
+          - typesafeotel
+          - typesafeprom
+          - integrations/nethttp
+          - integrations/gin
+          - integrations/echo
+          - integrations/fiber
+          - integrations/langchaingo
+          - integrations/temporal
+          - integrations/mcp
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version: stable
-      - name: Build
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-        run: go build ./...
-
-  coverage:
-    name: Coverage
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
-        with:
-          go-version: stable
-
-      - name: Measure
+          go-version-file: ${{ matrix.module }}/go.mod
+      - name: govulncheck
+        working-directory: ${{ matrix.module }}
         run: |
-          go test -count=1 -coverpkg=./... -coverprofile=coverage.out ./... > /dev/null
-          total=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}')
-          echo "Total coverage: $total"
-          echo "| package | coverage |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
-          go tool cover -func=coverage.out | tail -1 \
-            | awk '{printf "| **total** | %s |\n", $3}' >> "$GITHUB_STEP_SUMMARY"
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+  # Binaries come from the root module only. A submodule tag publishes a Go
+  # module and nothing else — there is no artifact to build, sign or attest.
+  publish:
+    name: Build, sign and publish
+    needs: [meta, release-guard, vulncheck]
+    if: needs.meta.outputs.root_tag == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write      # create the release and upload assets
+      id-token: write      # keyless signing and provenance, via OIDC
+      attestations: write  # build provenance attestations
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          name: coverage
-          path: coverage.out
-          retention-days: 14
+          fetch-depth: 0
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+
+      # Verify the module cache against go.sum before anything is built.
+      - run: go mod verify
+
+      - name: Extract the release notes
+        run: |
+          # The body of the GitHub release is the matching section of
+          # Release_Notes.md, verbatim. What is written there is what people
+          # see, and it is reviewed like any other file rather than typed into
+          # a web form at release time.
+          awk -v ver="## ${GITHUB_REF_NAME}" '
+            $0 == ver { found = 1; next }
+            found && /^## v[0-9]/ { exit }
+            found { print }
+          ' Release_Notes.md > /tmp/release-notes.md
+          if [ ! -s /tmp/release-notes.md ]; then
+            echo "::error::no notes for ${GITHUB_REF_NAME} in Release_Notes.md"; exit 1
+          fi
+          echo "Release body: $(wc -l < /tmp/release-notes.md) lines"
+          cat /tmp/release-notes.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Install syft, for the SBOM
+        uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+
+      - name: GoReleaser
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          version: "~> v2"
+          args: release --clean --release-notes=/tmp/release-notes.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Keyless signing: no private key exists to be stolen. The certificate
+          # records which workflow in which repository signed.
+          COSIGN_EXPERIMENTAL: "1"
+
+      # SLSA build provenance, verifiable with
+      # `gh attestation verify <file> --repo nibir1/typesafe-go`.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*.tar.gz,dist/*.zip
+
+  # Proves each submodule tag is fetchable before anyone relies on it. Does not
+  # fail the release: the proxy takes a little while to see a new tag.
+  submodule-tags:
+    name: Submodule tags are installable
+    needs: [meta, publish]
+    if: needs.meta.outputs.root_tag == 'true'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: stable
+      - name: Check each submodule tag
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          for m in typesafecache typesafeotel typesafeprom lint \
+                   integrations/nethttp integrations/gin integrations/echo \
+                   integrations/fiber integrations/langchaingo \
+                   integrations/temporal integrations/mcp; do
+            path="github.com/nibir1/typesafe-go/$m@$tag"
+            if GOPROXY=https://proxy.golang.org GOFLAGS= go list -m "$path" > /dev/null 2>&1; then
+              echo "ok   $path"
+            else
+              echo "::warning::$path is not on the proxy yet"
+            fi
+          done

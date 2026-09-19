@@ -91,7 +91,7 @@ workflow in which repository produced it.
 cosign verify-blob checksums.txt \
   --certificate checksums.txt.pem \
   --signature checksums.txt.sig \
-  --certificate-identity-regexp 'https://github\.com/nibir1/typesafe-go/\.github/workflows/release\.yml@.*' \
+  --certificate-identity-regexp 'https://github\.com/nibir1/typesafe-go/\.github/workflows/ci\.yml@.*' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 

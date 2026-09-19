@@ -271,3 +271,8 @@ api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.R
 ```
 
 `make integrations` runs all seven.
+
+---
+
+See the [user manual](MANUAL.md) for the SDK itself, and [examples/](../examples) for
+patterns you can copy.

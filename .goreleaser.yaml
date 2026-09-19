@@ -88,39 +88,14 @@ snapshot:
   version_template: "{{ incpatch .Version }}-next"
 
 changelog:
-  # The changelog is written by hand in CHANGELOG.md. A list of commit
-  # subjects is a log, not a changelog: it tells a reader what was typed, not
-  # what changed for them.
+  # The release body comes from Release_Notes.md, passed to goreleaser with
+  # --release-notes. A list of commit subjects is a log, not a changelog: it
+  # tells a reader what was typed, not what changed for them.
   disable: true
 
 release:
   draft: false
   prerelease: auto
-  footer: |
-    ## Install
-
-    ```bash
-    go install github.com/nibir1/typesafe-go/cmd/typesafe@{{ .Tag }}
-    go install github.com/nibir1/typesafe-go/cmd/typesafe-gen@{{ .Tag }}
-    ```
-
-    ## Verify
-
-    Every checksum file is signed with a keyless Sigstore certificate:
-
-    ```bash
-    cosign verify-blob checksums.txt \
-      --certificate checksums.txt.pem \
-      --signature checksums.txt.sig \
-      --certificate-identity-regexp 'https://github\.com/nibir1/typesafe-go/\.github/workflows/release\.yml@.*' \
-      --certificate-oidc-issuer https://token.actions.githubusercontent.com
-    ```
-
-    Build provenance is attested separately and verifiable with:
-
-    ```bash
-    gh attestation verify <archive> --repo nibir1/typesafe-go
-    ```
-
-    See [CHANGELOG.md](https://github.com/nibir1/typesafe-go/blob/{{ .Tag }}/CHANGELOG.md)
-    for what changed.
+  # No header or footer. The whole body is the matching section of
+  # Release_Notes.md, so there is exactly one place to edit and one place to
+  # review. Install and verification instructions live there.

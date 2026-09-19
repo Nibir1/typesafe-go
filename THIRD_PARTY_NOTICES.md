@@ -116,7 +116,8 @@ do attribute what someone else *decided*.
 
 ### Candidates — reviewed, not incorporated
 
-These projects were read during roadmap research (see `docs/Dev_Roadmap.md` §2.2.1).
+These projects were read during the source audit of 2026-09-18, recorded in the
+maintainers' design notes.
 Nothing has been taken from any of them. They are listed so that the copyright
 information is on hand if that changes.
 

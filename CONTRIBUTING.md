@@ -17,6 +17,26 @@ checks). `make` on its own lists every target.
 
 ---
 
+## One workflow, not five
+
+Everything — tests, linting, docs, drift detection, the live API and releases —
+is `.github/workflows/ci.yml`. A `meta` job classifies the run once and every
+other job states its condition in one line.
+
+| Trigger | What runs |
+|---|---|
+| push to `main`, pull request | the full code gate |
+| pull request | the above, plus the benchmark regression check |
+| daily schedule | the live API suite |
+| Monday schedule | served OpenAPI vs the vendored copy, and fixture drift |
+| manual dispatch | either of the above, plus optional cassette refresh |
+| a tag | the gate, `govulncheck`, then build, sign, attest, publish |
+
+It was five files. They shared most of their setup, drifted apart in the parts
+they did not share — the secret scan in the drift workflow searched two
+hard-coded directories long after `make secrets` had outgrown that — and nobody
+reading one could tell what the others did.
+
 ## What `make verify` checks
 
 | | |
@@ -118,6 +138,18 @@ plausible output by hand caught three wrong claims when the real runs replaced
 them — including that vagueness does not lower confidence, which is the
 opposite of what the example originally said.
 
+---
+
+## Changing a code snippet in the docs
+
+`docs_example_test.go` holds the code from [docs/MANUAL.md](docs/MANUAL.md) and
+the README **verbatim**, as an `Example` with no `// Output:` comment. The
+toolchain compiles and type-checks it and never runs it.
+
+Change a snippet in the manual, change it there too. When that file stops
+compiling, the documentation is already wrong — which is the failure mode prose
+has and code does not.
+
 ```bash
 cd examples
 go test ./... -update    # record, needs a key
@@ -142,8 +174,37 @@ If a regression is intended, say so in the commit message.
 
 ## Releasing
 
-Maintainers only. **The order matters and is not negotiable**, for a reason
-worth understanding before you start.
+Maintainers only.
+
+```bash
+make release                      # dry run: shows exactly what would happen
+make release VERSION=v1.0.0       # dry run for a specific version
+make release VERSION=v1.0.0 CONFIRM=yes
+```
+
+**Dry run is the default**, and the script asks you to type the version before
+it pushes anything. Pushing a tag is not undoable: the Go module proxy fetches
+and caches it within minutes, and a version that has been published stays
+published even if you delete the tag. `git tag -d` unpublishes nothing.
+
+With no `VERSION`, the script takes the newest `## vX.Y.Z` heading from
+[Release_Notes.md](Release_Notes.md). Writing the notes first and deriving the
+version from them means the two cannot disagree.
+
+### What the script does
+
+1. Extracts the matching section of `Release_Notes.md` — this becomes the
+   GitHub release body, so **what you write there is what people see**.
+2. Refuses a dirty tree, a non-`main` branch, an existing tag, or a missing
+   changelog entry.
+3. Runs `make verify` in full.
+4. Prints the plan, and stops unless `CONFIRM=yes`.
+5. Tags and pushes the root, then **waits for proxy.golang.org to serve it**.
+6. Runs `make release-prep`, tidies and tests all eleven submodules, and tags
+   each one.
+7. Restores the development replaces.
+
+### Why the ordering is not negotiable
 
 Every submodule carries, for local development:
 
@@ -157,47 +218,20 @@ a consumer running `go get github.com/nibir1/typesafe-go/typesafecache@v1.0.0`
 reads it, ignores the replace, looks for `typesafe-go v0.0.0` on the proxy, does
 not find it, and cannot build. The module is tagged, published and unusable.
 
-So the root has to be published *first*, and the submodules re-pointed at it
-before they are tagged.
+So the root must publish *first*, and the submodules are re-pointed at it before
+they are tagged. `scripts/check_release_ready.py` fails a release that would
+ship one, and so does CI on a submodule tag.
 
-```bash
-# 1. Changelog, by hand, describing what changed for a user.
-$EDITOR CHANGELOG.md
+### What CI does with the tag
 
-# 2. Everything passes.
-make verify
+The tag push runs the same single workflow as everything else. It re-runs the
+full gate on that exact commit, checks the tag against the module path and the
+release notes, runs `govulncheck` over every module, then builds the CLI
+binaries, signs them with keyless Sigstore, attaches an SBOM and attests build
+provenance.
 
-# 3. Tag and push the root.
-git tag v1.2.3 && git push origin v1.2.3
-
-# 4. Wait for the module proxy to see it — a minute or two.
-GOPROXY=https://proxy.golang.org go list -m github.com/nibir1/typesafe-go@v1.2.3
-
-# 5. Re-point every submodule at the published version.
-make release-prep VERSION=v1.2.3
-for m in lint typesafecache typesafeotel typesafeprom integrations/*; do
-  (cd "$m" && go mod tidy && go test ./...)
-done
-
-# 6. Confirm nothing unpublishable is left.
-make release-check VERSION=v1.2.3
-
-# 7. Commit, then tag each submodule.
-git commit -am "Pin submodules to v1.2.3"
-git tag typesafecache/v1.2.3 && git push origin typesafecache/v1.2.3
-# ... and so on. nethttp before gin, echo and fiber, which depend on it.
-
-# 8. Back to development.
-make release-revert VERSION=v1.2.3
-git commit -am "Restore development replaces"
-```
-
-The Release workflow handles the rest: it verifies the tagged commit, runs
-`govulncheck` over every module, builds, signs with keyless Sigstore, attaches
-an SBOM and attests build provenance.
-
-A tag is not the place to discover a failing test. The full gate runs before
-anything is built, and the release will not start without it.
+A tag is not the place to discover a failing test, so nothing is built until
+the gate passes.
 
 ### Why there is no `go.work`
 

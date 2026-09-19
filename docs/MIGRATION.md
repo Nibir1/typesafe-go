@@ -262,3 +262,8 @@ if team.Confidence > 0.8 {
 
 Longer, and every failure is visible. That is the trade Go makes everywhere
 else too.
+
+---
+
+The [user manual](MANUAL.md) is the full walkthrough; [DECISION_GUIDE.md](DECISION_GUIDE.md)
+covers question design, which is where the two SDKs differ least and matter most.

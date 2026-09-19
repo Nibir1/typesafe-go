@@ -194,6 +194,30 @@ the analyzers are held to their own standard.
 
 ### golangci-lint
 
+This repository's own `.golangci.yml` is separate from the analyzers and governs every
+module from one file, so a rule cannot hold in one place and not another. It is
+**curated rather than maximal**: a linter set that fires on every file teaches people to
+add `//nolint`, and a codebase full of suppressions hides the findings that mattered.
+
+Beyond the defaults it enables `bodyclose`, `contextcheck`, `errorlint`, `nilerr`,
+`noctx`, `misspell`, `unconvert`, `wastedassign` and `depguard` — the last of which
+enforces the core's zero-dependency guarantee at lint time, catching an import added
+before anyone runs `go mod tidy`.
+
+Two things it found on its first run over this repository, both fixed:
+
+- Three `fmt.Errorf` calls wrapped the sentinel with `%w` but formatted the cause with
+  `%v`, so `errors.Is` found the class while `errors.As` could never reach the
+  underlying error.
+- A benchmark appended to a slice it never read, which the compiler is free to elide —
+  it was measuring an empty loop.
+
+It also reported fifty findings that were the config's fault: `misspell` was set to the
+UK locale against a codebase that correctly uses US spelling, where `context.Canceled`
+has one `l`. A linter that is wrong fifty times is a linter people switch off.
+
+### Shipping the analyzers as a golangci-lint plugin
+
 The analyzers are exported for the v2 module plugin system, which links them into a
 custom binary rather than loading them at runtime, so the golangci-lint version and the
 analyzer version are pinned together.
@@ -238,3 +262,8 @@ than a grep.
 **No automatic fixes.** Splitting a compound question needs a human decision about what
 the two questions should be, and a mechanical edit would produce something that compiles
 and asks the wrong thing.
+
+---
+
+The rules come from the failure modes in [LIMITS.md](LIMITS.md); the [user
+manual](MANUAL.md) explains why they cannot be caught at runtime.

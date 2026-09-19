@@ -191,6 +191,57 @@ policy and supplies text, while the questions, weights and thresholds stay on
 the server. The agent cannot see them, drift from them, or be talked out of
 them by the text it is judging.
 
+### What does `v1.0` actually promise?
+
+No exported symbol outside `internal/` is removed, renamed or changed in
+signature during 1.x. Anything to be removed is marked `// Deprecated:` for at
+least one minor cycle first, naming its replacement.
+
+Three things are explicitly not covered: `internal/`, behaviour that depends on
+the API's answers (a probability is not a contract), and the wire-contract
+corrections, which describe what the server does today. Full statement in the
+[README](../README.md#stability).
+
+### Which Go versions are supported?
+
+The core supports the current stable release and the four before it — today
+1.23 through 1.27. Raising the floor is a minor-version event, announced one
+cycle ahead.
+
+Optional modules sit higher where a dependency forces it: 1.24 for
+`langchaingo`, 1.25 for OpenTelemetry, Prometheus, the web frameworks and MCP,
+1.26 for Temporal and the analyzers. That constrains those modules, not you.
+
+### Why is a submodule tagged `typesafecache/v1.0.0` and not `v1.0.0`?
+
+Because it is a separate Go module, and that is how Go tags one in a
+subdirectory. Each versions independently, so a breaking change in the Temporal
+integration does not force a major bump on the cache.
+
+If `go get` of a very new submodule tag fails, the module proxy may not have
+seen it yet.
+
+### How is a release cut?
+
+```bash
+make release VERSION=v1.0.0 CONFIRM=yes
+```
+
+It runs the full gate, tags the root, waits for the module proxy, re-points the
+eleven submodules at the published version, tags those, and restores the
+development state. The GitHub release body is the matching section of
+[Release_Notes.md](../Release_Notes.md).
+
+Dry run is the default. Pushing a tag is not undoable: the proxy caches a
+version within minutes and deleting the tag does not unpublish it.
+
+### Are releases signed?
+
+Yes — keyless Sigstore, so there is no private key to leak and the certificate
+records which workflow in which repository produced the binary. An SBOM ships
+with each archive and build provenance is attested. The verification commands
+are in [SECURITY.md](../SECURITY.md#supply-chain).
+
 ### How do I contribute?
 
 `make verify` has to pass — that is the gate CI runs. It covers formatting,
@@ -203,3 +254,8 @@ every integration and every example.
 make verify        # offline, no key needed
 make live          # the above, plus the real API
 ```
+
+---
+
+Not here? The [user manual](MANUAL.md) is the long form, and
+[WIRE_CONTRACT.md](WIRE_CONTRACT.md) has the details of what the API really does.

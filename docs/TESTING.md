@@ -521,6 +521,19 @@ into a protocol error. Return a schema-valid empty value on every error path.
 
 ---
 
+## Keeping the documentation true
+
+`docs_example_test.go` holds the code from `docs/MANUAL.md` and the README
+verbatim, as an `Example` with no `// Output:` comment — compiled and
+type-checked on every run, never executed. A signature change makes the
+documentation fail to build rather than quietly making it wrong.
+
+The same idea, one level up: every `examples/*/README.md` shows output copied
+from a real run against its cassette, not written by hand. Doing it that way
+caught three claims that were wrong about the model's actual behaviour.
+
+---
+
 ## Checking questions with the analyzers
 
 Beyond runtime tests, the three `go/analysis` analyzers catch question-design mistakes
@@ -620,13 +633,34 @@ Nothing in the response tells you it happened.
 ## Running this repository's own tests
 
 ```bash
-make verify   # the full offline gate: fmt, vet, race tests, contract suite,
-              # fixture validation, secret scan, doc coverage
+make verify   # the full offline gate — what CI runs, no key needed
 make live     # the above, plus the live API (needs TYPESAFE_API_KEY)
 make test     # just the offline unit tests, fast
 make flake    # repeat five times under -race to surface flakes
 make cover    # cross-package coverage
+make bench    # benchmarks; BENCHOUT=f.txt to save for a comparison
 ```
+
+`make verify` is the gate. It runs, in order:
+
+| Target | Asserts |
+|---|---|
+| `tidy-check` | `go.mod` is tidy |
+| `fmt-check`, `integrations-fmt` | every module is formatted |
+| `vet`, `vet-integration` | `go vet` under both build tags |
+| `deps`, `deps-graph` | **the core still has zero dependencies** |
+| `test-race` | the whole suite under `-race` |
+| `contract` | fixtures match the locked wire contract |
+| `fixtures` | fixtures validate against the OpenAPI schema |
+| `secrets` | no credential in any committed fixture or cassette |
+| `docs-check` | 100% doc coverage on exported symbols |
+| `links` | every relative link in the docs resolves |
+| `mermaid` | every diagram parses |
+| `licenses` | every third-party licence permits Apache-2.0 redistribution |
+| `bench-check` | every benchmark still builds and runs |
+| `dashboards` | the Grafana dashboard references metrics that exist |
+| `lint-module`, `submodules`, `integrations`, `examples` | every other module |
+| `analyzers` | the analyzers pass over this repository's own source |
 
 Suites are split by what they need:
 
@@ -634,9 +668,28 @@ Suites are split by what they need:
 |---|---|---|
 | `./...` (package tests) | nothing | `make test` |
 | `tests/contract/` | nothing | `make contract` |
+| `tests/typecheck/` | the Go toolchain | `make test` |
+| `examples/` | committed cassettes | `make examples` |
 | `tests/integration/` | a live key, `-tags=integration` | `make integration` |
 
+### Linting
+
+```bash
+golangci-lint run ./...        # uses the repository's .golangci.yml
+```
+
+The config is curated rather than maximal, and one file at the root governs every
+module so a rule cannot hold in one place and not another. See
+[LINTING.md](LINTING.md#golangci-lint) for what is enabled and why.
+
 ## CI
+
+This repository runs everything from a **single workflow**,
+`.github/workflows/ci.yml`: the code gate, linting, documentation checks, drift
+detection, the live API suite and releases. A `meta` job classifies the run and
+every other job states its condition in one line.
+
+For your own project, the shape that matters is smaller:
 
 ```yaml
 - run: go test -race ./...     # offline, no key needed
@@ -657,3 +710,8 @@ runnable by anyone who clones the repo:
 
 Refresh every cassette in one run with `TYPESAFE_UPDATE_CASSETTES=1`, and review the
 diff. An empty diff means the API has not drifted.
+
+---
+
+The [user manual](MANUAL.md) covers when to reach for each double; [CONTRIBUTING.md](../CONTRIBUTING.md)
+covers running this repository's own gate.

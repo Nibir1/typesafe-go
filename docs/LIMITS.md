@@ -192,3 +192,8 @@ backoff. Set both, or a retried call can outlive the request that started it.
 also the window in which a moved model alias goes unnoticed, so a long TTL
 against `jev-latest` is a deliberate trade — see
 [OBSERVABILITY.md](OBSERVABILITY.md).
+
+---
+
+See the [user manual](MANUAL.md) for how these limits shape everyday use, and
+[PERFORMANCE.md](PERFORMANCE.md) for what the SDK itself costs.

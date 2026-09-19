@@ -18,6 +18,65 @@ calibrated probabilities your code can branch on.
 >
 > Not affiliated with, endorsed by, or sponsored by TypeSafe AI.
 
+```mermaid
+flowchart LR
+    S["state<br/><i>the content</i>"] --> API["System One"]
+    Q["questions<br/><i>noul · choice · score</i>"] --> API
+    API --> A["answers<br/><i>probabilities + confidence</i>"]
+    A --> D["your code decides"]
+
+    style API fill:#4a5568,color:#fff
+    style D fill:#2d3748,color:#fff
+```
+
+---
+
+## Start here
+
+| | |
+|---|---|
+| **New to this?** | [**User Manual**](docs/MANUAL.md) — a linear read, install to production |
+| **Want to see code?** | [examples/](examples) — ten runnable programs, each replayed in CI |
+| **Picking a primitive?** | [DECISION_GUIDE.md](docs/DECISION_GUIDE.md) |
+| **Coming from Python or JS?** | [MIGRATION.md](docs/MIGRATION.md) |
+| **Looking up a symbol?** | [pkg.go.dev](https://pkg.go.dev/github.com/nibir1/typesafe-go) |
+
+<details>
+<summary><b>Every document in this repository</b></summary>
+
+**Guides**
+
+| | |
+|---|---|
+| [docs/MANUAL.md](docs/MANUAL.md) | The user manual: install, primitives, decisions, production |
+| [docs/DECISION_GUIDE.md](docs/DECISION_GUIDE.md) | Which primitive to use, and how to word the question |
+| [docs/LIMITS.md](docs/LIMITS.md) | Context budget, rate limits, jaggedness, cost |
+| [docs/MIGRATION.md](docs/MIGRATION.md) | Coming from the official Python or JavaScript SDK |
+| [docs/FAQ.md](docs/FAQ.md) | Short answers |
+
+**Reference**
+
+| | |
+|---|---|
+| [docs/WIRE_CONTRACT.md](docs/WIRE_CONTRACT.md) | The verified wire contract, and where the published docs are wrong |
+| [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | Measured SDK overhead, and the methodology |
+| [docs/TESTING.md](docs/TESTING.md) | Mocks, test servers, cassettes, CI recipes |
+| [docs/LINTING.md](docs/LINTING.md) | The three analyzers, their rules and their sources |
+| [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) | Tracing, metrics, caching, and the demo stack |
+| [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) | HTTP frameworks, LangChainGo, Temporal, MCP |
+
+**Project**
+
+| | |
+|---|---|
+| [CHANGELOG.md](CHANGELOG.md) | What changed, written by hand |
+| [Release_Notes.md](Release_Notes.md) | The announcement text for each release |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Clone to passing tests, house rules, the release procedure |
+| [SECURITY.md](SECURITY.md) | Reporting, supply chain, and what this SDK does with your data |
+| [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) | Dependency and licence register |
+
+</details>
+
 ---
 
 ## Quickstart
@@ -86,6 +145,26 @@ barely more than asking one. Pack every question about a given state into a sing
 
 ## The three primitives
 
+```mermaid
+flowchart TD
+    Start["What are you asking?"] --> Ordered{"Are the possible<br/>answers ordered?"}
+    Ordered -->|Yes| Score["<b>Score</b><br/>severity, urgency<br/>weighted position + confidence"]
+    Ordered -->|No| Exclusive{"Is exactly one<br/>of them true?"}
+    Exclusive -->|Yes| Choice["<b>Choice</b><br/>which team, which intent<br/>winner + distribution + confidence"]
+    Exclusive -->|No| Multiple{"Could several be<br/>true at once?"}
+    Multiple -->|Yes| Nouls["<b>Several Nouls</b><br/>one per proposition"]
+    Multiple -->|No| Noul["<b>Noul</b><br/>one yes/no proposition<br/>a probability, no confidence"]
+
+    style Score fill:#2c5282,color:#fff
+    style Choice fill:#2c5282,color:#fff
+    style Noul fill:#2c5282,color:#fff
+    style Nouls fill:#2c5282,color:#fff
+```
+
+Full guidance on wording, catch-all options and thresholds in
+[DECISION_GUIDE.md](docs/DECISION_GUIDE.md).
+
+
 | | Returns | Use it for |
 |---|---|---|
 | **`Noul`** | one probability, 0–1 | a yes/no judgment |
@@ -152,6 +231,36 @@ if errors.Is(err, typesafe.ErrOverloaded) { /* 529, retry later */ }
 `APIError.RequestID` carries `x-typesafe-request-id`, worth quoting in a support ticket.
 Credentials are scrubbed from every error string, including when a server echoes your key
 back in its response body.
+
+---
+
+## What happens on a call
+
+```mermaid
+sequenceDiagram
+    participant C as your code
+    participant I as interceptors
+    participant V as validate + estimate
+    participant R as retry loop
+    participant A as TypeSafe API
+
+    C->>I: SystemOne(ctx, req)
+    Note over I: tracing, metrics, cache —<br/>outermost first
+    I->>V: validated request
+    Note over V: rejects locally if invalid or<br/>over a context ceiling: no round trip
+    V->>R: encoded body
+    R->>A: attempt 1
+    A-->>R: 429 + Retry-After
+    Note over R: backoff + jitter,<br/>capped by MaxRetryAfter
+    R->>A: attempt 2
+    A-->>R: 200
+    R-->>I: decoded answers
+    I-->>C: typed answers
+```
+
+**An interceptor sees one logical call.** Retries happen beneath it, so a latency
+histogram records what the caller waited for rather than one bar per attempt. For
+per-attempt visibility use `WithRetryObserver`, which is the layer below.
 
 ---
 
@@ -274,6 +383,24 @@ half-certain signals from one certain and one absent.
 and "is this time-sensitive?" about the same state and multiplying understates badly.
 
 ### Confidence as a second axis
+
+```mermaid
+flowchart LR
+    A["answer"] --> C{"confidence"}
+    C -->|"≥ 0.90"| Act["act automatically"]
+    C -->|"0.50 – 0.90"| Confirm["act, and verify"]
+    C -->|"< 0.50"| Escalate["ask a person"]
+
+    style Act fill:#22543d,color:#fff
+    style Confirm fill:#744210,color:#fff
+    style Escalate fill:#742a2a,color:#fff
+```
+
+**Low confidence means your options overlap for this input**, not that the input was
+vague. Measured: `"hey"` scores **1.00** for `unclear`, because `unclear` is the right
+answer. Confidence falls when two options both fit. See
+[`confidence_routing`](examples/confidence_routing).
+
 
 ```go
 routing := decision.Bands{ActAbove: 0.9, ConfirmAbove: 0.5}
@@ -405,6 +532,21 @@ for i, item := range result.Items { // input order, always
     }
     use(i, item.Response)
 }
+```
+
+```mermaid
+flowchart TB
+    subgraph cheap["Nearly free — same request"]
+        Q1["+ question 2"]
+        Q2["+ question 3"]
+    end
+    subgraph expensive["A whole request each"]
+        S1["+ state 2"]
+        S2["+ state 3"]
+    end
+
+    style cheap fill:#22543d,color:#fff
+    style expensive fill:#742a2a,color:#fff
 ```
 
 A bounded worker pool with **per-item error isolation**, results **in input order**,
@@ -729,6 +871,33 @@ ever changes.
 
 ## Repository layout
 
+```mermaid
+flowchart TB
+    subgraph core["github.com/nibir1/typesafe-go — zero dependencies"]
+        C["client · primitives · answers<br/>retries · budget · batching"]
+        D["decision"]
+        T["typesafetest · cassette"]
+        CLI["cmd/typesafe · cmd/typesafe-gen"]
+    end
+
+    subgraph opt["Separate modules — you take only what you import"]
+        CA["typesafecache<br/><i>also zero deps</i>"]
+        OT["typesafeotel"]
+        PR["typesafeprom"]
+        L["lint<br/><i>the analyzers</i>"]
+        IN["integrations/<br/>nethttp · gin · echo · fiber<br/>langchaingo · temporal · mcp"]
+    end
+
+    core -.->|"imported by"| opt
+
+    style core fill:#22543d,color:#fff
+    style opt fill:#2a4365,color:#fff
+```
+
+Importing `github.com/nibir1/typesafe-go` pulls in **nothing**. `make deps-graph`, a
+CI job and a `depguard` lint rule all assert it, because they fail differently.
+
+
 ```
 .                      the typesafe package — client, primitives, answers,
                        retries, budget, middleware, batching
@@ -778,6 +947,38 @@ make verify     # the full offline gate — run before pushing
 make live       # the above, plus the live API (needs a key)
 ```
 
+### One workflow
+
+Everything runs from `.github/workflows/ci.yml` — the code gate, linting,
+documentation checks, drift detection, the live API and releases. A `meta` job
+classifies the run once and every other job states its condition in one line.
+
+```mermaid
+flowchart LR
+    T["trigger"] --> M["meta<br/><i>classify the run</i>"]
+    M -->|"push / PR"| G["code gate<br/>test matrix · lint · docs<br/>licences · examples · modules"]
+    M -->|"pull request"| B["benchmark<br/>regression"]
+    M -->|"daily"| L["live API"]
+    M -->|"Mondays"| D["contract drift"]
+    M -->|"tag"| R["gate → govulncheck →<br/>build · sign · attest · publish"]
+
+    style M fill:#4a5568,color:#fff
+    style R fill:#22543d,color:#fff
+```
+
+### Releasing
+
+```bash
+make release                                  # dry run
+make release VERSION=v1.0.0 CONFIRM=yes       # for real
+```
+
+The release body is the matching section of [Release_Notes.md](Release_Notes.md).
+Dry run is the default and the script asks you to type the version, because
+pushing a tag is not undoable — the module proxy caches a version within minutes
+and deleting the tag does not unpublish it. Full procedure in
+[CONTRIBUTING.md](CONTRIBUTING.md#releasing).
+
 `make verify` runs: tidy check, gofmt, `go vet` under both build tags, the
 zero-dependency assertion, race tests, the contract suite, fixture validation against the
 OpenAPI schema, a credential scan over every committed fixture, and a doc-coverage check.
@@ -796,6 +997,7 @@ printf 'TYPESAFE_API_KEY=%s\n' "$YOUR_KEY" > .env.local && chmod 600 .env.local
 
 | | |
 |---|---|
+| [**docs/MANUAL.md**](docs/MANUAL.md) | **The user manual — start here.** Install to production, in one read |
 | [docs/WIRE_CONTRACT.md](docs/WIRE_CONTRACT.md) | The verified wire contract, and every place the published docs are wrong |
 | [docs/TESTING.md](docs/TESTING.md) | Testing without a key |
 | [docs/LINTING.md](docs/LINTING.md) | The three analyzers, their rules, and CI wiring |
@@ -807,10 +1009,10 @@ printf 'TYPESAFE_API_KEY=%s\n' "$YOUR_KEY" > .env.local && chmod 600 .env.local
 | [docs/MIGRATION.md](docs/MIGRATION.md) | Coming from the Python or JavaScript SDK |
 | [docs/FAQ.md](docs/FAQ.md) | Short answers |
 | [CHANGELOG.md](CHANGELOG.md) | What changed, written by hand |
+| [Release_Notes.md](Release_Notes.md) | The announcement text for each release |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Clone to passing tests, and the house rules |
 | [SECURITY.md](SECURITY.md) | Reporting, supply chain, and what this SDK does with your data |
 | [examples/](examples) | Ten runnable programs, each replayed in CI |
-| [docs/Dev_Roadmap.md](docs/Dev_Roadmap.md) | Phase plan, competitive audit, design corrections |
 | [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) | Attribution register |
 
 `WIRE_CONTRACT.md` is worth reading before building anything non-trivial. Several things
@@ -940,8 +1142,9 @@ Built and verified:
   releases, an SBOM, a licence audit, and the tooling that makes every submodule
   actually installable
 
-Everything on the roadmap is built. Full plan in
-[docs/Dev_Roadmap.md](docs/Dev_Roadmap.md).
+Everything planned is built. The design history — the phase plan, the competitive
+audit and every correction made along the way — is kept in the working tree rather
+than published.
 
 ---
 

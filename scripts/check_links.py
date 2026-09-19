@@ -15,6 +15,7 @@ build depend on somebody else's uptime.
 
 import pathlib
 import re
+import subprocess
 import sys
 
 OK = "\033[32m"
@@ -39,6 +40,17 @@ def strip_code(text: str) -> str:
     return re.sub(r"`[^`\n]*`", "", text)
 
 
+def is_ignored(root: pathlib.Path, path: pathlib.Path) -> bool:
+    """Whether git would exclude this path from a clone."""
+    try:
+        return subprocess.run(
+            ["git", "check-ignore", "-q", str(path)],
+            cwd=root, capture_output=True,
+        ).returncode == 0
+    except OSError:
+        return False   # no git available; the existence check still applies
+
+
 def main() -> int:
     root = pathlib.Path(__file__).resolve().parent.parent
     broken: list[str] = []
@@ -51,8 +63,17 @@ def main() -> int:
             if not target or target.startswith(("http://", "https://", "mailto:")):
                 continue
             checked += 1
-            if not (md.parent / target).exists():
-                broken.append(f"{md.relative_to(root)} -> {target}")
+            resolved = (md.parent / target)
+            if not resolved.exists():
+                broken.append(f"{md.relative_to(root)} -> {target} (missing)")
+            elif is_ignored(root, resolved):
+                # The file exists here and will not exist for anyone else. This
+                # is the failure mode a local check cannot otherwise see, and
+                # it is how README.md came to link at a gitignored file that
+                # was broken for every reader but its author.
+                broken.append(
+                    f"{md.relative_to(root)} -> {target} (git-ignored: it will "
+                    f"not exist in a clone)")
 
     for b in broken:
         print(f"  {ERR}✗ broken link: {b}{OFF}")

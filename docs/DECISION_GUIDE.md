@@ -223,3 +223,8 @@ Before you send a question set:
 
 `typesafe lint -f request.json` checks most of it, and the analyzers check the
 rest at build time.
+
+---
+
+The [user manual](MANUAL.md) puts this in context; [LIMITS.md](LIMITS.md) covers
+what the model is weak at, and [examples/](../examples) shows each pattern running.
