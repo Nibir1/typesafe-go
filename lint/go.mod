@@ -12,7 +12,6 @@ go 1.26.0
 
 // The analyzers match on the SDK's own types, so they track the SDK in this
 // repository rather than a published version.
-replace github.com/nibir1/typesafe-go => ../
 
 require golang.org/x/tools v0.50.0
 

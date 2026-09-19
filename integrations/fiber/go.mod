@@ -9,15 +9,10 @@ module github.com/nibir1/typesafe-go/integrations/fiber
 
 go 1.25.0
 
-replace (
-	github.com/nibir1/typesafe-go => ../../
-	github.com/nibir1/typesafe-go/integrations/nethttp => ../nethttp
-)
-
 require (
 	github.com/gofiber/fiber/v3 v3.5.0
-	github.com/nibir1/typesafe-go v0.0.0
-	github.com/nibir1/typesafe-go/integrations/nethttp v0.0.0
+	github.com/nibir1/typesafe-go v1.0.0
+	github.com/nibir1/typesafe-go/integrations/nethttp v1.0.0
 )
 
 require (

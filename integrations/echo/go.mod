@@ -9,15 +9,10 @@ module github.com/nibir1/typesafe-go/integrations/echo
 
 go 1.25.0
 
-replace (
-	github.com/nibir1/typesafe-go => ../../
-	github.com/nibir1/typesafe-go/integrations/nethttp => ../nethttp
-)
-
 require (
 	github.com/labstack/echo/v4 v4.15.4
-	github.com/nibir1/typesafe-go v0.0.0
-	github.com/nibir1/typesafe-go/integrations/nethttp v0.0.0
+	github.com/nibir1/typesafe-go v1.0.0
+	github.com/nibir1/typesafe-go/integrations/nethttp v1.0.0
 )
 
 require (

@@ -6,6 +6,4 @@ module github.com/nibir1/typesafe-go/integrations/nethttp
 
 go 1.23
 
-replace github.com/nibir1/typesafe-go => ../../
-
-require github.com/nibir1/typesafe-go v0.0.0
+require github.com/nibir1/typesafe-go v1.0.0

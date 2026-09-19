@@ -9,9 +9,7 @@ module github.com/nibir1/typesafe-go/integrations/langchaingo
 
 go 1.24.4
 
-replace github.com/nibir1/typesafe-go => ../../
-
-require github.com/nibir1/typesafe-go v0.0.0
+require github.com/nibir1/typesafe-go v1.0.0
 
 require (
 	github.com/Masterminds/goutils v1.1.1 // indirect

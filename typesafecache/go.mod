@@ -12,6 +12,5 @@ go 1.23
 // The cache hashes requests with the same canonical form the cassette matcher
 // uses, so it tracks the SDK in this repository rather than a published
 // version.
-replace github.com/nibir1/typesafe-go => ../
 
-require github.com/nibir1/typesafe-go v0.0.0
+require github.com/nibir1/typesafe-go v1.0.0

@@ -9,12 +9,10 @@ module github.com/nibir1/typesafe-go/integrations/gin
 
 go 1.25.0
 
-replace github.com/nibir1/typesafe-go => ../../
-
 require (
 	github.com/gin-gonic/gin v1.12.0
-	github.com/nibir1/typesafe-go v0.0.0
-	github.com/nibir1/typesafe-go/integrations/nethttp v0.0.0
+	github.com/nibir1/typesafe-go v1.0.0
+	github.com/nibir1/typesafe-go/integrations/nethttp v1.0.0
 )
 
 require (
@@ -48,5 +46,3 @@ require (
 	golang.org/x/text v0.34.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 )
-
-replace github.com/nibir1/typesafe-go/integrations/nethttp => ../nethttp
