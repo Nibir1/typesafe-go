@@ -242,6 +242,17 @@ records which workflow in which repository produced the binary. An SBOM ships
 with each archive and build provenance is attested. The verification commands
 are in [SECURITY.md](../SECURITY.md#supply-chain).
 
+The signature is detached: `checksums.txt`, `checksums.txt.sig` and
+`checksums.txt.pem`, three files rather than one bundle. Verify the checksums
+file, then check an archive against it — that is what the signature covers.
+
+Two things trip people up. The owner is `Nibir1` with a capital N, and cosign
+matches the identity case-sensitively, so the lowercase spelling that is
+correct for the Go module path reports a perfectly good release as unverified.
+And the identity ends in the git ref the build ran from, which is
+`refs/heads/main` when a release was published through the recovery path — the
+documented pattern ends in `@.*` to cover both.
+
 ### How do I contribute?
 
 `make verify` has to pass — that is the gate CI runs. It covers formatting,

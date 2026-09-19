@@ -8,7 +8,46 @@ records what was typed, not what changed for you.
 
 ## [Unreleased]
 
-Nothing yet.
+Nothing in the library behaves differently. Everything here is a documented
+guarantee, a test that was asserting something it could not measure, or the
+release pipeline.
+
+### Documentation
+
+- `CallInfo.Duration` now says it can be zero. The value comes from the
+  monotonic clock, whose tick is as coarse as 15.6ms on Windows, so a call
+  served in microseconds can begin and end inside one tick. Zero means
+  "shorter than this machine can measure", not "not recorded" — and a stream
+  of them understates the average by up to one tick per call.
+
+### Fixed
+
+- Two tests asserted on measurements taken at the wrong boundary and failed
+  only on Windows and macOS. `TestHooks` required a positive duration from a
+  call too fast for the platform clock; `TestBatchSeqBreakStopsEverything`
+  counted requests in the HTTP handler, which keeps running after the last
+  client goroutine exits, and now counts in a `RoundTripper` instead.
+- Releases are signed with cosign 2. cosign 3 defaults to a single-file
+  bundle, which silently ignores the `--output-certificate` and
+  `--output-signature` flags the signing config passes, then fails trying to
+  write a bundle to an empty path.
+- The release body is no longer empty. `--release-notes` is read only by
+  goreleaser's changelog pipe, so `changelog: disable: true` — which looked
+  like the right way to suppress a commit log — skipped the code that loads
+  the notes. Passing the file already suppresses the commit log. Both release
+  jobs now read the published body back and fail if it is not the notes.
+- The release script pins and tags submodules one tier at a time, so no commit
+  requires a tag that does not exist yet, and tidies the unpublished
+  `examples` and `deploy/example` modules, which break when the submodules
+  they replace are pinned.
+
+### Added
+
+- A recovery path for a release broken by the workflow itself. A tag run uses
+  the workflow file from that tag's own commit, so re-running it re-runs the
+  bug, and a published tag cannot move. `publish_tag` runs the release from
+  the default branch against an existing tag, adding only what was never
+  published.
 
 ## [1.0.0] — 2026-09-19
 

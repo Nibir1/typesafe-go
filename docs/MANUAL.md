@@ -130,6 +130,13 @@ go install github.com/nibir1/typesafe-go/cmd/typesafe@latest
 typesafe doctor
 ```
 
+> Building from source with `go install` is the shortest path and the one the
+> rest of this manual assumes. If you would rather take a prebuilt binary,
+> every [release](https://github.com/Nibir1/typesafe-go/releases) attaches one
+> per platform with a signature, an SBOM and build provenance — verify it with
+> the commands in [SECURITY.md](../SECURITY.md#supply-chain) rather than
+> trusting the download.
+
 ```
   ok    API key        TYPESAFE_API_KEY is set (108 characters)
   ok    connectivity   reached https://api.typesafe.ai

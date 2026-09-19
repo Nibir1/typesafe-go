@@ -102,6 +102,25 @@ cosign verify-blob checksums.txt \
 > match a perfectly good signature and makes a legitimate release look
 > tampered with.
 
+The certificate in `v1.0.0` carries:
+
+```
+URI:https://github.com/Nibir1/typesafe-go/.github/workflows/ci.yml@refs/heads/main
+issuer: https://token.actions.githubusercontent.com
+```
+
+The `@` suffix is the git ref the signing job ran from, so it is
+`refs/heads/main` for a release published through the recovery path and
+`refs/tags/<version>` for one published by the tag itself. The regexp above
+ends in `@.*` and matches either; do not pin it to one of them.
+
+**Signatures are detached, not bundled.** You get three files —
+`checksums.txt`, `checksums.txt.sig` and `checksums.txt.pem` — and the
+certificate is base64-encoded, which `cosign verify-blob` handles. cosign 3
+defaults to a single-file bundle instead, so the release workflow pins cosign
+2 to keep producing the format these instructions describe. If a future
+release ships one `.bundle` file, these instructions changed with it.
+
 **Build provenance is attested**, and an SBOM ships with each archive:
 
 ```bash

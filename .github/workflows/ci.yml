@@ -904,6 +904,27 @@ jobs:
           # records which workflow in which repository signed.
           COSIGN_EXPERIMENTAL: "1"
 
+
+      # goreleaser reported success while publishing a blank page: the flag
+      # that carries the notes is read by a pipe the config had disabled, so
+      # nothing failed and nothing was written. Assets are easy to eyeball, a
+      # missing body is not, so assert it rather than notice it later.
+      - name: Assert the release body is the notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          gh release view "$TAG_NAME" --json body -q .body > /tmp/published.md
+          first=$(grep -m1 -v '^[[:space:]]*$' /tmp/release-notes.md)
+          if ! grep -qF "$first" /tmp/published.md; then
+            echo "::error::the release body is not Release_Notes.md"
+            echo "expected to find: $first"
+            echo "published body ($(wc -l < /tmp/published.md) lines):"
+            head -5 /tmp/published.md
+            exit 1
+          fi
+          echo "Release body: $(wc -l < /tmp/published.md) lines, matches the notes."
+
       # SLSA build provenance, verifiable with
       # `gh attestation verify <file> --repo nibir1/typesafe-go`.
       - name: Attest build provenance
@@ -1068,6 +1089,27 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COSIGN_EXPERIMENTAL: "1"
+
+
+      # goreleaser reported success while publishing a blank page: the flag
+      # that carries the notes is read by a pipe the config had disabled, so
+      # nothing failed and nothing was written. Assets are easy to eyeball, a
+      # missing body is not, so assert it rather than notice it later.
+      - name: Assert the release body is the notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ inputs.publish_tag }}
+        run: |
+          gh release view "$TAG_NAME" --json body -q .body > /tmp/published.md
+          first=$(grep -m1 -v '^[[:space:]]*$' /tmp/release-notes.md)
+          if ! grep -qF "$first" /tmp/published.md; then
+            echo "::error::the release body is not Release_Notes.md"
+            echo "expected to find: $first"
+            echo "published body ($(wc -l < /tmp/published.md) lines):"
+            head -5 /tmp/published.md
+            exit 1
+          fi
+          echo "Release body: $(wc -l < /tmp/published.md) lines, matches the notes."
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2

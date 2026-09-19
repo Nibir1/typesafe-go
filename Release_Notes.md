@@ -11,6 +11,24 @@ notes are written for someone deciding whether to adopt or upgrade.
 Each section starts with `## <version>` and runs to the next one. Keep the
 first paragraph short — it is what shows in a notification.
 
+### How this reaches the page
+
+The release job extracts the matching section with `awk`, writes it to a file
+and hands that file to goreleaser as `--release-notes`. Two things about that
+path are worth knowing before you change anything near it.
+
+**Only goreleaser's changelog pipe reads `--release-notes`.** Its `Run` loads
+the file and then returns early, before any commit log is generated, so
+passing the file is by itself enough to suppress the log. Setting
+`changelog: disable: true` skips that `Run` entirely and the flag is never
+read — goreleaser reports success and publishes a blank page. That is how
+`v1.0.0` shipped fifteen correct assets under an empty body, and why its page
+was filled in by hand afterwards rather than by a re-run.
+
+**The result is checked.** Both release jobs read the published body back from
+the API and fail if it is not this file. A missing asset is obvious at a
+glance; a missing body went through a fully green run unnoticed.
+
 ---
 
 ## v1.0.0

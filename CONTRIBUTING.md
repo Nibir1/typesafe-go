@@ -247,6 +247,29 @@ provenance.
 A tag is not the place to discover a failing test, so nothing is built until
 the gate passes.
 
+### Two pins in the release job that are not incidental
+
+**cosign is pinned to v2.** `.goreleaser.yaml` signs with
+`--output-certificate` and `--output-signature`. cosign 3 turns
+`--new-bundle-format` on by default, which ignores both flags and writes a
+single bundle instead; with no `--bundle` path it fails trying to create one
+at the empty string. Unpinning it breaks signing, and moving to bundles means
+changing the signing config and the verification instructions in
+[SECURITY.md](SECURITY.md) and [Release_Notes.md](Release_Notes.md) together,
+in a release of its own. Dependabot bumps the *action*, which is fine; it must
+not bump `cosign-release`.
+
+**`changelog:` must not be `disable: true`.** goreleaser reads
+`--release-notes` in exactly one place — the changelog pipe's `Run` — which
+loads the file and returns before generating any commit log. Disabling the
+changelog skips that `Run`, so the notes are never read and the release
+publishes with an empty body, through a green run with no error. Passing the
+file is already enough to suppress the commit log.
+
+Both release jobs now read the published body back and fail if it is not
+`Release_Notes.md`, because the first failure of this kind was invisible until
+someone opened the page.
+
 ### When something fails after the root tag is pushed
 
 The root tag is the one irreversible step. Everything after it is retryable,

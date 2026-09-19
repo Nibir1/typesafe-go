@@ -862,6 +862,37 @@ The binary has **no dependencies either**: stdlib `flag`, no CLI framework.
 
 ---
 
+## Releases and verification
+
+```bash
+go get github.com/nibir1/typesafe-go@latest
+go install github.com/nibir1/typesafe-go/cmd/typesafe@latest
+```
+
+Prebuilt binaries for Linux, macOS and Windows on amd64 and arm64 are attached
+to each [release](https://github.com/Nibir1/typesafe-go/releases), with an SBOM
+per archive, a keyless [Sigstore](https://www.sigstore.dev/) signature over the
+checksums, and SLSA build provenance.
+
+```bash
+cosign verify-blob checksums.txt \
+  --certificate checksums.txt.pem \
+  --signature checksums.txt.sig \
+  --certificate-identity-regexp 'https://github\.com/Nibir1/typesafe-go/\.github/workflows/ci\.yml@.*' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+
+gh attestation verify typesafe_1.0.0_linux_amd64.tar.gz --repo Nibir1/typesafe-go
+```
+
+There is no private key to leak: the certificate is issued for the duration of
+the build and records which workflow in which repository produced the file.
+The owner is spelled **`Nibir1`**, with a capital N, because cosign matches the
+identity case-sensitively and the lowercase spelling correct for the Go module
+path does not match. Details, and what the signature does not prove, are in
+[SECURITY.md](SECURITY.md#supply-chain).
+
+---
+
 ## Requirements
 
 **Go 1.23+.** The core module has **zero third-party dependencies**, and CI fails if that

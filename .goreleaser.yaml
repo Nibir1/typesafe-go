@@ -88,10 +88,19 @@ snapshot:
   version_template: "{{ incpatch .Version }}-next"
 
 changelog:
-  # The release body comes from Release_Notes.md, passed to goreleaser with
-  # --release-notes. A list of commit subjects is a log, not a changelog: it
-  # tells a reader what was typed, not what changed for them.
-  disable: true
+  # NOT `disable: true`, however much it reads like the right setting.
+  #
+  # The changelog pipe is the only code that reads --release-notes: its Run
+  # loads the file into ctx.ReleaseNotes and then returns early, before any
+  # commit log is generated. `disable: true` skips that Run, so the flag is
+  # never read and the release ships with an empty body. v1.0.0 was published
+  # that way — fifteen correct assets under a blank page.
+  #
+  # Passing --release-notes is therefore enough on its own to suppress the
+  # commit log, which is what this block wanted: a list of commit subjects is
+  # a log, not a changelog. It tells a reader what was typed, not what changed
+  # for them. scripts/release.sh always passes the file.
+  use: git
 
 release:
   draft: false
