@@ -152,6 +152,13 @@ type CallInfo struct {
 	RequestID string
 
 	// Duration is how long the whole call took, retries included.
+	//
+	// It can be zero. The value comes from the monotonic clock, whose tick is
+	// coarse on some platforms — as much as 15.6ms on Windows — so a call
+	// served from a local cache or a test server can begin and end inside one
+	// tick. Zero means "shorter than this machine can measure", not "not
+	// recorded", and averaging a stream of these will understate the truth by
+	// up to one tick per call.
 	Duration time.Duration
 
 	// Questions is how many questions were asked.

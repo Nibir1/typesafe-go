@@ -464,17 +464,39 @@ func batchWorkers() int {
 // A leaked goroutine here is the failure mode this shape exists to prevent:
 // the obvious implementation leaves every worker blocked on a send into a
 // channel nobody will ever read again.
+// countingTransport counts the requests the SDK starts.
+//
+// The test server cannot answer that question. A request already written to
+// the socket is read and handled whenever the server goroutine is scheduled,
+// which can be after the last client goroutine has exited — so a handler
+// counter keeps moving for a while after the SDK has genuinely stopped. That
+// is what failed on macos-latest and windows-latest and passed on every Linux
+// job: not a leak, a scheduler difference. RoundTrip is the client's own
+// boundary, and once no SDK goroutine is left nothing can call it.
+type countingTransport struct {
+	rt      http.RoundTripper
+	started atomic.Int64
+}
+
+func (c *countingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	c.started.Add(1)
+	return c.rt.RoundTrip(r)
+}
+
 func TestBatchSeqBreakStopsEverything(t *testing.T) {
+	const concurrency = 8
+
 	var served atomic.Int64
+	issuing := &countingTransport{rt: http.DefaultTransport}
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		served.Add(1)
 		time.Sleep(2 * time.Millisecond)
 		writeJSON(t, w, http.StatusOK, okResponse())
-	})
+	}, typesafe.WithHTTPClient(&http.Client{Transport: issuing}))
 
 	got := 0
 	for _, item := range c.SystemOneBatchSeq(context.Background(), batchStates(500), batchQuestions(),
-		typesafe.WithConcurrency(8)) {
+		typesafe.WithConcurrency(concurrency)) {
 		_ = item
 		got++
 		if got == 10 {
@@ -484,8 +506,13 @@ func TestBatchSeqBreakStopsEverything(t *testing.T) {
 	if got != 10 {
 		t.Fatalf("consumed %d items before breaking, want 10", got)
 	}
-	if n := int(served.Load()); n >= 500 {
-		t.Errorf("server served %d of 500 after an early break; the batch did not stop", n)
+
+	// Stopping "before the 500th state" is a weak claim. The real ceiling is
+	// what can legitimately be in flight when the consumer breaks: the
+	// results already buffered, one request per worker running, and at most
+	// one more each before the stop is seen.
+	if n, max := int(issuing.started.Load()), got+3*concurrency; n > max {
+		t.Errorf("started %d requests after breaking at %d, want at most %d", n, got, max)
 	}
 
 	// The iterator returns only after every worker's send has completed and
@@ -503,11 +530,14 @@ func TestBatchSeqBreakStopsEverything(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 
-	// Nothing still in flight means the server sees no further traffic.
-	settled := served.Load()
+	// No batch goroutine is left, so this count cannot move again.
+	settled := issuing.started.Load()
 	time.Sleep(50 * time.Millisecond)
-	if after := served.Load(); after != settled {
-		t.Errorf("server served %d more requests after the iterator returned", after-settled)
+	if after := issuing.started.Load(); after != settled {
+		t.Errorf("the SDK started %d more request(s) after the iterator returned", after-settled)
+	}
+	if n := int(served.Load()); n >= 500 {
+		t.Errorf("server served %d of 500; the batch did not stop", n)
 	}
 }
 
@@ -644,7 +674,9 @@ func TestBatchItemCallbackFiresOncePerItem(t *testing.T) {
 
 func TestBatchRecordsDurations(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(5 * time.Millisecond)
+		// Long enough that a per-item duration cannot read as zero on a
+		// coarse clock. See measurableWork.
+		time.Sleep(measurableWork)
 		writeJSON(t, w, http.StatusOK, okResponse())
 	})
 

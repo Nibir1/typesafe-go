@@ -229,6 +229,9 @@ func TestHooks(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			// Outlast a clock tick, so the Duration assertion below means
+			// something on every platform. See measurableWork.
+			time.Sleep(measurableWork)
 			writeJSON(t, w, 200, okResponse())
 		}, typesafe.WithHooks(hooks))
 		if _, err := c.SystemOne(context.Background(), sampleRequest()); err != nil {
