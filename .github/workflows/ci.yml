@@ -868,8 +868,27 @@ jobs:
           echo "Release body: $(wc -l < /tmp/release-notes.md) lines"
           cat /tmp/release-notes.md >> "$GITHUB_STEP_SUMMARY"
 
+      # Pinned to cosign 2, deliberately.
+      #
+      # cosign 3 turns --new-bundle-format on by default, which ignores
+      # --output-certificate and --output-signature and writes a single bundle
+      # instead. .goreleaser.yaml passes exactly those two flags, so cosign 3
+      # ignored them, found no --bundle path, and failed trying to create a
+      # bundle at the empty string.
+      #
+      # The signing config lives in the tagged tree and cannot be edited for a
+      # version that is already published, so the toolchain has to match it
+      # rather than the other way round. It also matches what SECURITY.md and
+      # the release notes tell people to run: verify-blob with a separate
+      # --certificate and --signature. Moving to bundles means changing the
+      # config and those instructions together, in a release of their own.
+      #
+      # v2.6.5 shipped after v3.1.2, so this is a maintained line, not an
+      # abandoned one. Dependabot bumps the action; it must not bump this.
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v2.6.5
 
       - name: Install syft, for the SBOM
         uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
@@ -1016,8 +1035,27 @@ jobs:
           echo "Release body: $(wc -l < /tmp/release-notes.md) lines"
           cat /tmp/release-notes.md >> "$GITHUB_STEP_SUMMARY"
 
+      # Pinned to cosign 2, deliberately.
+      #
+      # cosign 3 turns --new-bundle-format on by default, which ignores
+      # --output-certificate and --output-signature and writes a single bundle
+      # instead. .goreleaser.yaml passes exactly those two flags, so cosign 3
+      # ignored them, found no --bundle path, and failed trying to create a
+      # bundle at the empty string.
+      #
+      # The signing config lives in the tagged tree and cannot be edited for a
+      # version that is already published, so the toolchain has to match it
+      # rather than the other way round. It also matches what SECURITY.md and
+      # the release notes tell people to run: verify-blob with a separate
+      # --certificate and --signature. Moving to bundles means changing the
+      # config and those instructions together, in a release of their own.
+      #
+      # v2.6.5 shipped after v3.1.2, so this is a maintained line, not an
+      # abandoned one. Dependabot bumps the action; it must not bump this.
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v2.6.5
 
       - name: Install syft, for the SBOM
         uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
