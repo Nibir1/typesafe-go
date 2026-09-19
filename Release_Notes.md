@@ -139,6 +139,11 @@ Stated plainly, because finding them yourself later is worse:
 
 ### Verify this release
 
+Needs **cosign 2.x**: `verify-blob` in cosign 3 accepts only `--bundle`, and
+`--certificate` and `--signature` were removed. `brew install cosign` gives
+you 3, so install the matching one with
+`go install github.com/sigstore/cosign/v2/cmd/cosign@v2.6.5`.
+
 ```bash
 cosign verify-blob checksums.txt \
   --certificate checksums.txt.pem \

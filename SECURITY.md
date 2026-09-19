@@ -121,6 +121,20 @@ defaults to a single-file bundle instead, so the release workflow pins cosign
 2 to keep producing the format these instructions describe. If a future
 release ships one `.bundle` file, these instructions changed with it.
 
+> **Verify with cosign 2.x.** `cosign verify-blob` in cosign 3 accepts only
+> `--bundle`; `--certificate` and `--signature` were removed, so the command
+> above fails on an unknown flag. `brew install cosign` installs 3 today.
+>
+> ```bash
+> go install github.com/sigstore/cosign/v2/cmd/cosign@v2.6.5
+> ```
+
+Pass `--signature` a *path*. cosign accepts either a path or the signature
+content itself, so a mistyped or missing filename is read as the signature,
+decoded into nonsense, and reported as a signature failure rather than a
+missing file. The command above was run against `v1.0.0` and returns
+`Verified OK`.
+
 **Build provenance is attested**, and an SBOM ships with each archive:
 
 ```bash

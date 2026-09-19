@@ -884,6 +884,14 @@ cosign verify-blob checksums.txt \
 gh attestation verify typesafe_1.0.0_linux_amd64.tar.gz --repo Nibir1/typesafe-go
 ```
 
+> **Verify with cosign 2.x.** `cosign verify-blob` in cosign 3 accepts only
+> `--bundle`; `--certificate` and `--signature` were removed, so the command
+> above fails on an unknown flag. `brew install cosign` installs 3 today.
+>
+> ```bash
+> go install github.com/sigstore/cosign/v2/cmd/cosign@v2.6.5
+> ```
+
 There is no private key to leak: the certificate is issued for the duration of
 the build and records which workflow in which repository produced the file.
 The owner is spelled **`Nibir1`**, with a capital N, because cosign matches the

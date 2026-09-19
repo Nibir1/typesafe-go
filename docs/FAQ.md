@@ -246,6 +246,11 @@ The signature is detached: `checksums.txt`, `checksums.txt.sig` and
 `checksums.txt.pem`, three files rather than one bundle. Verify the checksums
 file, then check an archive against it — that is what the signature covers.
 
+You need **cosign 2.x** to do it. cosign 3's `verify-blob` takes only
+`--bundle`; `--certificate` and `--signature` are gone, and `brew install
+cosign` gives you 3. Install the one that matches:
+`go install github.com/sigstore/cosign/v2/cmd/cosign@v2.6.5`.
+
 Two things trip people up. The owner is `Nibir1` with a capital N, and cosign
 matches the identity case-sensitively, so the lowercase spelling that is
 correct for the Go module path reports a perfectly good release as unverified.
