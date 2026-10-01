@@ -5,6 +5,6 @@ COPY . .
 WORKDIR /src/deploy/example
 RUN go build -o /out/example .
 
-FROM alpine:3.22
+FROM alpine:3.24
 COPY --from=build /out/example /usr/local/bin/example
 ENTRYPOINT ["example"]
