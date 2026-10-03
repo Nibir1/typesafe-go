@@ -14,7 +14,7 @@ replace github.com/nibir1/typesafe-go => ../../
 replace github.com/nibir1/typesafe-go/integrations/nethttp => ../../integrations/nethttp
 
 require (
-	github.com/labstack/echo/v4 v4.15.4
+	github.com/labstack/echo/v4 v4.16.0
 	github.com/nibir1/typesafe-go v0.0.0
 	github.com/nibir1/typesafe-go/integrations/nethttp v0.0.0
 )
@@ -28,5 +28,5 @@ require (
 	golang.org/x/crypto v0.53.0 // indirect
 	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/sys v0.46.0 // indirect
-	golang.org/x/text v0.38.0 // indirect
+	golang.org/x/text v0.40.0 // indirect
 )
