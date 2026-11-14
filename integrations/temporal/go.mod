@@ -27,8 +27,8 @@ require (
 	github.com/robfig/cron v1.2.0 // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
 	github.com/stretchr/testify v1.12.1
-	go.temporal.io/api v1.63.5 // indirect
-	go.temporal.io/sdk v1.49.0
+	go.temporal.io/api v1.64.3 // indirect
+	go.temporal.io/sdk v1.51.0
 	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
